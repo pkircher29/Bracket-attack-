@@ -165,6 +165,8 @@
           rules: { target: d.target, winBy: d.winBy, notes: d.notes },
           teamSize: d.teamSize,
           teams,
+          format: d.format,
+          seeded: !!d.seeded,
         });
         Views.resetDraft();
         toast(`🚀 <b>${esc(t.name)}</b> is underway — bracket drawn!`, 'ok');
@@ -318,6 +320,7 @@
       if (field === 'teamSize') { d.randomTeams = []; d.bench = []; render(); }
     } else {
       d[field] = el.value;
+      if (field === 'format' || field === 'seeded') render();
     }
   });
 

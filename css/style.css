@@ -385,3 +385,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 /* ---------- confetti ---------- */
 
 #confetti { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
+
+/* ---- double-elimination bracket sections ---- */
+.brh { margin: 18px 0 8px; font-size: 1.05rem; }
+.brh .muted.small { font-weight: 400; }

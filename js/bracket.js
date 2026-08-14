@@ -1,5 +1,8 @@
-/* Bracket Attack — single-elimination bracket engine
-   with a 3rd-place match and same-leg dynamic substitution. */
+/* Bracket Attack — bracket engine: single or double elimination,
+   random or seeded draw, 3rd-place match (single elim) and same-leg
+   dynamic substitution. Matches carry `src` descriptors ([matchId, 'w'|'l']
+   per side) so slot-filling, bye cascades and merge reconciliation are all
+   one generic propagate() pass. */
 'use strict';
 
 const Bracket = (() => {
@@ -12,8 +15,22 @@ const Bracket = (() => {
     return p;
   }
 
+  // Bracket slot order by seed for P slots, so #1 and #2 meet in the final:
+  // P=8 -> [1,8,4,5,2,7,3,6]. Seeds beyond the team count become byes,
+  // which lands the byes on the top seeds.
+  function seedPositions(P) {
+    let arr = [1];
+    while (arr.length < P) {
+      const n = arr.length * 2;
+      const next = [];
+      for (const x of arr) next.push(x, n + 1 - x);
+      arr = next;
+    }
+    return arr;
+  }
+
   /* Create a tournament. `teams` = [{name, playerIds, kind: 'static'|'random'}] */
-  function createTournament({ name, game, icon, rules, teamSize, teams }) {
+  function createTournament({ name, game, icon, rules, teamSize, teams, format, seeded }) {
     const t = {
       id: uid('t'),
       name, game, icon,
@@ -23,6 +40,8 @@ const Bracket = (() => {
         notes: rules.notes || '',
       },
       teamSize,
+      format: format === 'double' ? 'double' : 'single',
+      seeded: !!seeded,
       status: 'active',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -43,59 +62,93 @@ const Bracket = (() => {
     return t;
   }
 
+  function baseMatch(id, round, idx, extra = {}) {
+    return {
+      id, round, idx,
+      teamA: null, teamB: null, scoreA: 0, scoreB: 0,
+      status: 'pending',     // pending -> live -> done
+      winner: null, bye: false,
+      isFinal: false, isThird: false,
+      updatedAt: now(),
+      ...extra,
+    };
+  }
+
   function buildMatches(t) {
-    const ids = shuffle(t.teams.map(x => x.id));
-    const N = ids.length;
+    const ordered = t.seeded ? t.teams.map(x => x.id) : shuffle(t.teams.map(x => x.id));
+    const N = ordered.length;
     const P = Math.max(2, nextPow2(N));
     const R = Math.round(Math.log2(P));
-    const byes = P - N;
 
-    // Round 1 pairs — byes spread across the first `byes` pairs.
+    // Round 1 pairs by seed slot (random draw = shuffled "seeds").
+    const slots = seedPositions(P).map(s => ordered[s - 1] || null);
     const pairs = [];
-    let ti = 0;
     for (let i = 0; i < P / 2; i++) {
-      if (i < byes) pairs.push([ids[ti++] ?? null, null]);
-      else pairs.push([ids[ti++] ?? null, ids[ti++] ?? null]);
+      let a = slots[2 * i], b = slots[2 * i + 1];
+      if (!a && b) { a = b; b = null; }
+      pairs.push([a, b]);
     }
 
+    const dbl = t.format === 'double' && N >= 3;
     const matches = [];
+
+    // Winners (or only) bracket.
     for (let r = 1; r <= R; r++) {
       const count = P / Math.pow(2, r);
       for (let i = 0; i < count; i++) {
-        matches.push({
-          id: `r${r}m${i}`,
-          round: r, idx: i,
+        matches.push(baseMatch(`r${r}m${i}`, r, i, {
+          br: 'W',
           teamA: r === 1 ? pairs[i][0] : null,
           teamB: r === 1 ? pairs[i][1] : null,
-          scoreA: 0, scoreB: 0,
-          status: 'pending',     // pending -> live -> done
-          winner: null,
-          bye: false,
-          isFinal: r === R && i === 0,
-          isThird: false,
-          updatedAt: now(),
-        });
+          isFinal: !dbl && r === R && i === 0,
+          src: r === 1 ? undefined : {
+            a: [`r${r - 1}m${2 * i}`, 'w'],
+            b: [`r${r - 1}m${2 * i + 1}`, 'w'],
+          },
+        }));
       }
     }
-    if (R >= 2) {
-      matches.push({
-        id: 'third', round: R, idx: 99,
-        teamA: null, teamB: null, scoreA: 0, scoreB: 0,
-        status: 'pending', winner: null, bye: false,
-        isFinal: false, isThird: true, skipped: false,
-        updatedAt: now(),
-      });
+
+    if (dbl) {
+      // Losers bracket: rounds 1..2R-2. Odd rounds pair losers-bracket
+      // survivors; even rounds drop in the losers from winners round k+1.
+      const L = 2 * R - 2;
+      for (let l = 1; l <= L; l++) {
+        const k = Math.ceil(l / 2);
+        const count = P / Math.pow(2, k + 1);
+        for (let i = 0; i < count; i++) {
+          let src;
+          if (l === 1) src = { a: [`r1m${2 * i}`, 'l'], b: [`r1m${2 * i + 1}`, 'l'] };
+          else if (l % 2 === 0) src = { a: [`l${l - 1}m${i}`, 'w'], b: [`r${k + 1}m${i}`, 'l'] };
+          else src = { a: [`l${l - 1}m${2 * i}`, 'w'], b: [`l${l - 1}m${2 * i + 1}`, 'w'] };
+          matches.push(baseMatch(`l${l}m${i}`, l, i, { br: 'L', src }));
+        }
+      }
+      matches.push(baseMatch('gf', R + 1, 0, {
+        br: 'G', isFinal: true,
+        src: { a: [`r${R}m0`, 'w'], b: [`l${L}m0`, 'w'] },
+      }));
+      t.lbRounds = L;
+    } else {
+      t.lbRounds = 0;
+      if (R >= 2) {
+        matches.push(baseMatch('third', R, 99, {
+          isThird: true, skipped: false,
+          src: { a: [`r${R - 1}m0`, 'l'], b: [`r${R - 1}m1`, 'l'] },
+        }));
+      }
     }
+
     t.matches = matches;
     t.rounds = R;
 
-    // Auto-advance byes in round 1.
-    for (const m of matches.filter(m => m.round === 1 && !m.isThird)) {
+    // Auto-advance byes in round 1, then cascade.
+    for (const m of matches.filter(m => m.br !== 'L' && m.round === 1 && !m.isThird)) {
       if (m.teamA && !m.teamB) {
         m.winner = m.teamA; m.status = 'done'; m.bye = true;
-        feedWinner(t, m);
       }
     }
+    propagate(t);
   }
 
   function loserOf(m) {
@@ -104,16 +157,59 @@ const Bracket = (() => {
     return other || null;
   }
 
-  function feedWinner(t, m) {
-    if (m.isThird || m.isFinal) return;
-    const next = t.matches.find(x =>
-      !x.isThird && x.round === m.round + 1 && x.idx === (m.idx >> 1));
-    if (next) {
-      if (m.idx % 2 === 0) next.teamA = m.winner;
-      else next.teamB = m.winner;
-      next.updatedAt = now();
+  /* ---------- generic slot propagation ----------
+     Fills empty slots from each match's `src` results, auto-advances byes
+     (a side whose source finished with no team to send), and marks matches
+     with two dead sides as skipped. Only fills empty slots on pending
+     matches, so admin swaps survive. Idempotent — also used after merges. */
+
+  function srcResult(t, ref) {
+    const sm = t.matches.find(x => x.id === ref[0]);
+    if (!sm || sm.status !== 'done') return { ready: !sm, team: null };
+    return { ready: true, team: ref[1] === 'w' ? sm.winner : loserOf(sm) };
+  }
+
+  function propagate(t) {
+    if (!t.matches.some(m => m.src)) { legacyReconcile(t); return; }
+    let changed = true;
+    let guard = 0;
+    while (changed && guard++ < 50) {
+      changed = false;
+      for (const m of t.matches) {
+        if (m.status !== 'pending' || !m.src) continue;
+        for (const side of ['a', 'b']) {
+          const key = side === 'a' ? 'teamA' : 'teamB';
+          if (m[key] || !m.src[side]) continue;
+          const r = srcResult(t, m.src[side]);
+          if (r.ready && r.team) { m[key] = r.team; m.updatedAt = now(); changed = true; }
+        }
+        const dead = s => m.src[s] ? (srcResult(t, m.src[s]).ready && !srcResult(t, m.src[s]).team) : false;
+        if (m.teamA && !m.teamB && dead('b')) {
+          m.winner = m.teamA; m.status = 'done'; m.bye = true; m.updatedAt = now(); changed = true;
+        } else if (m.teamB && !m.teamA && dead('a')) {
+          m.winner = m.teamB; m.status = 'done'; m.bye = true; m.updatedAt = now(); changed = true;
+        } else if (!m.teamA && !m.teamB && dead('a') && dead('b')) {
+          m.status = 'done'; m.skipped = true; m.winner = null; m.updatedAt = now(); changed = true;
+        }
+      }
     }
-    if (t.rounds >= 2 && m.round === t.rounds - 1) maybeSetupThird(t);
+  }
+
+  // Matches fed (directly or transitively) from m via the src graph.
+  function descendants(t, m) {
+    const out = [];
+    const seen = new Set([m.id]);
+    const queue = [m.id];
+    while (queue.length) {
+      const id = queue.shift();
+      for (const x of t.matches) {
+        if (seen.has(x.id) || !x.src) continue;
+        if ((x.src.a && x.src.a[0] === id) || (x.src.b && x.src.b[0] === id)) {
+          seen.add(x.id); out.push(x); queue.push(x.id);
+        }
+      }
+    }
+    return out;
   }
 
   // Once both semifinals finish, populate (or short-circuit) the 3rd-place match.
@@ -183,7 +279,7 @@ const Bracket = (() => {
   function findSwap(t, m, busy, claimed) {
     for (const mm of t.matches) {
       if (mm.id === m.id || mm.status !== 'pending') continue;
-      if (mm.round !== m.round || mm.isThird !== m.isThird) continue;
+      if (mm.round !== m.round || mm.isThird !== m.isThird || (mm.br || '') !== (m.br || '')) continue;
       for (const side of ['teamA', 'teamB']) {
         const id = mm[side];
         if (!id || claimed.has(id)) continue;
@@ -217,7 +313,7 @@ const Bracket = (() => {
     m.winner = winnerId;
     m.endedAt = new Date().toISOString();
     m.updatedAt = now();
-    feedWinner(t, m);
+    propagate(t);
     checkComplete(t);
     t.updatedAt = now();
     Store.save();
@@ -237,6 +333,31 @@ const Bracket = (() => {
   function reopenMatch(t, m) {
     if (m.bye || m.status !== 'done') return 'Only finished matches can be reopened.';
     const w = m.winner, l = loserOf(m);
+
+    if (t.matches.some(x => x.src)) {
+      // src-graph path (all new tournaments, both formats)
+      const down = descendants(t, m)
+        .filter(x => (w && (x.teamA === w || x.teamB === w)) || (l && (x.teamA === l || x.teamB === l)) || x.bye || x.skipped);
+      if (down.some(x => x.status === 'done' && !x.bye && !x.skipped) || down.some(x => x.status === 'live')) {
+        return 'Later matches involving these teams were already played — reopen those first.';
+      }
+      for (const x of down) {
+        if (x.bye || x.skipped) {
+          Object.assign(x, { status: 'pending', winner: null, bye: false, skipped: false, scoreA: 0, scoreB: 0 });
+        }
+        if (x.teamA === w || x.teamA === l) x.teamA = null;
+        if (x.teamB === w || x.teamB === l) x.teamB = null;
+        x.updatedAt = now();
+      }
+      m.status = 'live'; m.winner = null; m.endedAt = null; m.updatedAt = now();
+      propagate(t);
+      if (t.status === 'complete') { t.status = 'active'; t.placements = { first: null, second: null, third: null }; }
+      t.updatedAt = now();
+      Store.save();
+      return null;
+    }
+
+    // legacy single-elim data without src descriptors
     const downstream = t.matches.filter(x => x.id !== m.id && (x.isThird || x.round > m.round) &&
       ((w && (x.teamA === w || x.teamB === w)) || (l && (x.teamA === l || x.teamB === l))));
     if (downstream.some(x => x.status !== 'pending')) {
@@ -309,6 +430,19 @@ const Bracket = (() => {
   }
 
   function checkComplete(t) {
+    if (t.format === 'double' && t.matches.some(x => x.br === 'G')) {
+      const gf = t.matches.find(x => x.br === 'G');
+      if (gf.status !== 'done') return;
+      const lbFinal = t.matches.find(x => x.br === 'L' && x.round === t.lbRounds && x.idx === 0);
+      t.status = 'complete';
+      t.completedAt = new Date().toISOString();
+      t.placements = {
+        first: gf.winner,
+        second: loserOf(gf),
+        third: lbFinal ? loserOf(lbFinal) : null,
+      };
+      return;
+    }
     const final = t.matches.find(x => x.isFinal);
     const third = t.matches.find(x => x.isThird);
     if (!final || final.status !== 'done') return;
@@ -344,6 +478,12 @@ const Bracket = (() => {
   /* Re-derive cross-match state after a merge. Only fills empty slots —
      never overwrites — so substitution swaps survive. */
   function reconcile(t) {
+    propagate(t);
+    if (t.status !== 'complete') checkComplete(t);
+  }
+
+  // pre-src single-elim replicas: derive feeds the old way
+  function legacyReconcile(t) {
     for (const m of t.matches) {
       if (m.isThird || m.isFinal || m.status !== 'done' || !m.winner) continue;
       const next = t.matches.find(x =>
@@ -359,7 +499,6 @@ const Bracket = (() => {
         maybeSetupThird(t);
       }
     }
-    if (t.status !== 'complete') checkComplete(t);
   }
 
   function progress(t) {
@@ -375,7 +514,20 @@ const Bracket = (() => {
     return `Round ${r}`;
   }
 
+  // Human label for any match in either format.
+  function matchLabel(t, m) {
+    if (m.isThird) return '3rd place';
+    if (m.br === 'G') return 'Grand Final';
+    if (m.br === 'L') return m.round === t.lbRounds ? 'Losers Final' : `Losers Rd ${m.round}`;
+    if (m.br === 'W' && t.format === 'double') {
+      if (m.round === t.rounds) return 'Winners Final';
+      if (m.round === t.rounds - 1) return 'Winners Semis';
+      return `Round ${m.round}`;
+    }
+    return roundName(t, m.round);
+  }
+
   return { createTournament, isReady, planStart, applyStart, finishMatch, touchMatch,
            reopenMatch, restart, swapSlots, movePlayer,
-           mergeTournaments, reconcile, progress, roundName, loserOf };
+           mergeTournaments, reconcile, progress, roundName, matchLabel, loserOf };
 })();

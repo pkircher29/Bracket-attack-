@@ -38,7 +38,9 @@ const Views = (() => {
     return `
       <span class="chip chip-rule">🎯 First to ${r.target}</span>
       ${r.winBy ? `<span class="chip chip-rule">win by ${r.winBy}</span>` : ''}
-      <span class="chip chip-rule">${t.teamSize} player${t.teamSize > 1 ? 's' : ''}/team</span>`;
+      <span class="chip chip-rule">${t.teamSize} player${t.teamSize > 1 ? 's' : ''}/team</span>
+      <span class="chip chip-rule">${t.format === 'double' ? '⚔ Double elim' : '🗡 Single elim'}</span>
+      ${t.seeded ? '<span class="chip chip-rule">📋 Seeded</span>' : ''}`;
   }
 
   /* =============== overview =============== */
@@ -199,6 +201,7 @@ const Views = (() => {
       name: '', gameIdx: 0, customGame: '',
       target: g.target, winBy: g.winBy, notes: g.notes,
       teamSize: 2, staticIds: new Set(), randomTeams: [], bench: [],
+      format: 'single', seeded: '',
     };
   }
 
@@ -239,8 +242,8 @@ const Views = (() => {
         <b>${esc(t.name)}</b> <span class="muted small">(${t.playerIds.map(Store.playerName).map(esc).join(', ')})</span>
       </label>`).join('');
 
-    const preview = d.randomTeams.map(t => `
-      <div class="rteam"><b>${esc(t.name)}</b><span class="muted small">${t.playerIds.map(Store.playerName).map(esc).join(' · ')}</span></div>`).join('');
+    const preview = d.randomTeams.map((t, i) => `
+      <div class="rteam"><b>${d.seeded ? `#${d.staticIds.size + i + 1} ` : ''}${esc(t.name)}</b><span class="muted small">${t.playerIds.map(Store.playerName).map(esc).join(' · ')}</span></div>`).join('');
 
     return `
     <section>
@@ -268,6 +271,26 @@ const Views = (() => {
           </div>
           <label class="f">House rules / notes
             <textarea data-field="notes" rows="2" placeholder="Bust back to 15, cancellation scoring...">${esc(d.notes)}</textarea></label>
+        </fieldset>
+
+        <fieldset class="f-rules">
+          <legend>Bracket format</legend>
+          <div class="rulesrow">
+            <label class="f">Elimination
+              <select data-field="format">
+                <option value="single" ${d.format !== 'double' ? 'selected' : ''}>Single elimination</option>
+                <option value="double" ${d.format === 'double' ? 'selected' : ''}>Double elimination</option>
+              </select></label>
+            <label class="f">Draw
+              <select data-field="seeded">
+                <option value="" ${!d.seeded ? 'selected' : ''}>🎲 Random draw</option>
+                <option value="1" ${d.seeded ? 'selected' : ''}>📋 Seeded</option>
+              </select></label>
+          </div>
+          <p class="muted small">${d.format === 'double'
+            ? 'Double elim: lose once and you drop to the losers bracket — lose twice and you\'re out. Losers-bracket champ meets the winners-bracket champ in the Grand Final (needs 3+ teams).'
+            : 'Single elim: lose and you\'re out. Semifinal losers play a 3rd-place match.'}
+          ${d.seeded ? ' Seeding follows the order below — static teams first (in checked order), then random teams. #1 meets #2 in the final; byes go to top seeds.' : ''}</p>
         </fieldset>
 
         <fieldset class="f-rules">
@@ -333,27 +356,50 @@ const Views = (() => {
         ${live.map(m => `<div class="qitem qlive">
             <span class="chip chip-live"><span class="pulse"></span>LIVE</span>
             <b>${esc(Store.teamName(t, m.teamA))}</b> vs <b>${esc(Store.teamName(t, m.teamB))}</b>
-            <span class="muted small">${m.isThird ? '3rd place' : Bracket.roundName(t, m.round)}</span>
+            <span class="muted small">${Bracket.matchLabel(t, m)}</span>
             <a class="btn btn-live btn-sm" href="#/m/${t.id}/${m.id}">Score it</a>
           </div>`).join('')}
         ${ready.map(m => `<div class="qitem">
             <span class="chip chip-active">UP NEXT</span>
             <b>${esc(Store.teamName(t, m.teamA))}</b> vs <b>${esc(Store.teamName(t, m.teamB))}</b>
-            <span class="muted small">${m.isThird ? '3rd place' : Bracket.roundName(t, m.round)}</span>
+            <span class="muted small">${Bracket.matchLabel(t, m)}</span>
             <button class="btn btn-accent btn-sm" data-action="start-match" data-mid="${m.id}">▶ Start</button>
           </div>`).join('')}
       </div>` : '';
 
-    const cols = [];
-    for (let r = 1; r <= t.rounds; r++) {
-      const ms = t.matches.filter(m => m.round === r && !m.isThird);
-      cols.push(`<div class="round"><h4>${Bracket.roundName(t, r)}</h4>
-        <div class="roundcol">${ms.map(m => matchCard(t, m)).join('')}</div></div>`);
-    }
-    const third = t.matches.find(m => m.isThird);
-    if (third && !third.skipped) {
-      cols.push(`<div class="round"><h4>3rd Place</h4>
-        <div class="roundcol">${matchCard(t, third)}</div></div>`);
+    const col = (title, ms) => `<div class="round"><h4>${title}</h4>
+      <div class="roundcol">${ms.map(m => matchCard(t, m)).join('')}</div></div>`;
+
+    let bracketHtml;
+    if (t.format === 'double' && t.matches.some(m => m.br === 'G')) {
+      const wCols = [];
+      for (let r = 1; r <= t.rounds; r++) {
+        const ms = t.matches.filter(m => m.br === 'W' && m.round === r && !m.skipped);
+        if (ms.length) wCols.push(col(Bracket.matchLabel(t, ms[0]), ms));
+      }
+      const gf = t.matches.find(m => m.br === 'G');
+      wCols.push(col('🏆 Grand Final', [gf]));
+      const lCols = [];
+      for (let l = 1; l <= (t.lbRounds || 0); l++) {
+        const ms = t.matches.filter(m => m.br === 'L' && m.round === l && !m.skipped);
+        if (ms.length) lCols.push(col(Bracket.matchLabel(t, ms[0]), ms));
+      }
+      bracketHtml = `
+        <h3 class="brh">Winners Bracket</h3>
+        <div class="bracket">${wCols.join('')}</div>
+        <h3 class="brh">💀 Losers Bracket <span class="muted small">— lose here and you're out; survive and crash the Grand Final</span></h3>
+        ${lCols.length ? `<div class="bracket">${lCols.join('')}</div>` : '<div class="empty">Losers bracket fills in as winners-bracket matches finish.</div>'}`;
+    } else {
+      const cols = [];
+      for (let r = 1; r <= t.rounds; r++) {
+        const ms = t.matches.filter(m => m.round === r && !m.isThird && (m.br || 'W') === 'W');
+        cols.push(col(Bracket.roundName(t, r), ms));
+      }
+      const third = t.matches.find(m => m.isThird);
+      if (third && !third.skipped) {
+        cols.push(col('3rd Place', [third]));
+      }
+      bracketHtml = `<div class="bracket">${cols.join('')}</div>`;
     }
 
     const teams = t.teams.map(team => `
@@ -377,7 +423,7 @@ const Views = (() => {
       ${podium}
       ${queue}
       <h2>Bracket</h2>
-      <div class="bracket">${cols.join('')}</div>
+      ${bracketHtml}
       <h2>Teams</h2>
       <div class="teamgrid">${teams}</div>
       ${Auth.isHost ? adminTools(t) : ''}
@@ -390,7 +436,7 @@ const Views = (() => {
     for (const m of t.matches) {
       if (m.status !== 'pending') continue;
       for (const side of ['teamA', 'teamB']) {
-        if (m[side]) slotTeams.push({ id: m[side], label: `${Store.teamName(t, m[side])} — ${m.isThird ? '3rd place' : Bracket.roundName(t, m.round)}` });
+        if (m[side]) slotTeams.push({ id: m[side], label: `${Store.teamName(t, m[side])} — ${Bracket.matchLabel(t, m)}` });
       }
     }
     const slotOpts = slotTeams.map(s => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
@@ -460,7 +506,7 @@ const Views = (() => {
     <section class="scorepage">
       <a class="backlink" href="#/t/${t.id}">← ${esc(t.name)}</a>
       <div class="scorehead">
-        <h2>${t.icon} ${m.isThird ? '3rd Place Match' : Bracket.roundName(t, m.round)}</h2>
+        <h2>${t.icon} ${m.isThird ? '3rd Place Match' : Bracket.matchLabel(t, m)}</h2>
         <div class="chiprow">
           <span class="chip chip-rule">🎯 First to ${r.target}${r.winBy ? `, win by ${r.winBy}` : ''}</span>
           ${m.status === 'live' ? '<span class="chip chip-live"><span class="pulse"></span>LIVE</span>' : ''}
