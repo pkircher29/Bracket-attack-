@@ -95,6 +95,7 @@ function vLogin() {
     <input id="l-name" placeholder="Your name" maxlength="24" autocomplete="off">
     <input id="l-pass" type="password" placeholder="Party password" autocomplete="off">
     <button class="btn btn-accent btn-lg" data-action="join">🎶 Let me in</button>
+    <p class="muted small">Looking for the scoreboard? <a href="https://junkyardolympics.com" style="color:var(--accent)">🏆 junkyardolympics.com</a></p>
   </div>`;
 }
 
@@ -199,11 +200,13 @@ function vSetup(st) {
 
 function nav() {
   const r = location.hash.replace(/^#\//, '') || 'search';
+  const games = `<a href="https://junkyardolympics.com" title="Junkyard Olympics scoreboard">🏆 Games</a>`;
   $('#nav').innerHTML = loggedIn() ? `
+    ${games}
     <a href="#/search" class="${r === 'search' ? 'on' : ''}">Search</a>
     <a href="#/queue" class="${r === 'queue' ? 'on' : ''}">Queue</a>
     ${isHost() ? `<a href="#/player" class="${r === 'player' ? 'on' : ''}">🎛 Admin</a>` : ''}
-    <a href="#/login" data-action="logout" title="${esc(myName())}">↩</a>` : '';
+    <a href="#/login" data-action="logout" title="${esc(myName())}">↩</a>` : games;
 }
 
 async function render() {
