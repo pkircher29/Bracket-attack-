@@ -83,9 +83,10 @@ const Sync = (() => {
   }
 
   async function putRoom(state) {
+    const auth = (typeof Auth !== 'undefined' && Auth.token) ? { Authorization: 'Bearer ' + Auth.token } : {};
     const res = await fetch(`${url}/r/${encodeURIComponent(room)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...auth },
       body: JSON.stringify({ state }),
     });
     if (!res.ok) throw new Error('sync push failed');

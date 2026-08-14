@@ -3,6 +3,22 @@
 
 const Views = (() => {
 
+  /* =============== login gate =============== */
+
+  function loginGate() {
+    return `
+    <section class="hero" style="max-width:400px;margin:6vh auto 0">
+      <div class="hero-stripe"></div>
+      <h1>Junkyard <em>Olympics</em></h1>
+      <p class="muted">One login for the scoreboard and the jukebox.</p>
+      <div class="card form" style="margin-top:18px;text-align:left">
+        <label class="f">Your name<input id="a-name" maxlength="24" autocomplete="off"></label>
+        <label class="f">Party password<input id="a-pass" type="password"></label>
+        <button class="btn btn-accent btn-lg" data-action="auth-login">🏆 Let me in</button>
+      </div>
+    </section>`;
+  }
+
   /* =============== shared bits =============== */
 
   function statusChip(t) {
@@ -117,8 +133,9 @@ const Views = (() => {
 
     <section class="datatools">
       <button class="btn btn-ghost btn-sm" data-action="export-data">⬇ Export backup</button>
+      ${Auth.isHost ? `
       <label class="btn btn-ghost btn-sm">⬆ Import backup<input type="file" id="import-file" accept=".json" hidden></label>
-      <button class="btn btn-danger btn-sm" data-action="reset-all">Reset everything</button>
+      <button class="btn btn-danger btn-sm" data-action="reset-all">Reset everything</button>` : ''}
     </section>`;
   }
 
@@ -287,6 +304,8 @@ const Views = (() => {
       action = `<a class="btn btn-live btn-sm" href="#/m/${t.id}/${m.id}"><span class="pulse"></span>Score it</a>`;
     } else if (Bracket.isReady(m) && t.status === 'active') {
       action = `<button class="btn btn-accent btn-sm" data-action="start-match" data-mid="${m.id}">▶ Start</button>`;
+    } else if (m.status === 'done' && !m.bye && !m.skipped && Auth.isHost) {
+      action = `<button class="btn btn-ghost btn-sm" title="reopen to fix the score" data-action="reopen-match" data-mid="${m.id}">🎛 ↺ Fix</button>`;
     }
     return `
     <div class="match ${m.status}" id="match-${m.id}">
@@ -361,10 +380,53 @@ const Views = (() => {
       <div class="bracket">${cols.join('')}</div>
       <h2>Teams</h2>
       <div class="teamgrid">${teams}</div>
-      <div class="datatools">
-        <button class="btn btn-danger btn-sm" data-action="del-tournament" data-id="${t.id}">Delete tournament</button>
-      </div>
+      ${Auth.isHost ? adminTools(t) : ''}
     </section>`;
+  }
+
+  /* Host-only tools: fix brackets, rosters, and mistakes. */
+  function adminTools(t) {
+    const slotTeams = [];
+    for (const m of t.matches) {
+      if (m.status !== 'pending') continue;
+      for (const side of ['teamA', 'teamB']) {
+        if (m[side]) slotTeams.push({ id: m[side], label: `${Store.teamName(t, m[side])} — ${m.isThird ? '3rd place' : Bracket.roundName(t, m.round)}` });
+      }
+    }
+    const slotOpts = slotTeams.map(s => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
+
+    const rostered = [];
+    for (const team of t.teams) for (const pid of team.playerIds) {
+      rostered.push({ id: pid, label: `${Store.playerName(pid)} (${team.name})` });
+    }
+    const inT = new Set(rostered.map(r => r.id));
+    const pool = Store.state.players.filter(p => !inT.has(p.id))
+      .map(p => ({ id: p.id, label: `${p.name} (not in this tournament)` }));
+    const pOptsA = rostered.map(r => `<option value="${r.id}">${esc(r.label)}</option>`).join('');
+    const pOptsB = rostered.concat(pool).map(r => `<option value="${r.id}">${esc(r.label)}</option>`).join('');
+
+    return `
+      <h2>🎛 Admin tools</h2>
+      <div class="card form">
+        <p class="muted small">Move a team to a different leg of the bracket (both must be in matches that haven't started):</p>
+        <div class="rulesrow">
+          <label class="f">Team<select id="adm-slot-a">${slotOpts || '<option value="">—</option>'}</select></label>
+          <label class="f">swaps with<select id="adm-slot-b">${slotOpts || '<option value="">—</option>'}</select></label>
+        </div>
+        <button class="btn btn-ghost" data-action="adm-swap-slots">↔ Swap bracket slots</button>
+
+        <p class="muted small" style="margin-top:10px">Reassign players — swap two players between teams, or sub in someone from the pool:</p>
+        <div class="rulesrow">
+          <label class="f">Player<select id="adm-p-a">${pOptsA || '<option value="">—</option>'}</select></label>
+          <label class="f">swaps with / is replaced by<select id="adm-p-b">${pOptsB || '<option value="">—</option>'}</select></label>
+        </div>
+        <button class="btn btn-ghost" data-action="adm-swap-players">🔁 Reassign players</button>
+
+        <div class="rulesrow" style="margin-top:10px">
+          <button class="btn btn-ghost" data-action="adm-restart">♻ Restart bracket <span class="muted small">(same teams, new draw)</span></button>
+          <button class="btn btn-danger" data-action="del-tournament" data-id="${t.id}">Delete tournament</button>
+        </div>
+      </div>`;
   }
 
   /* =============== scorekeeping page =============== */
@@ -422,6 +484,6 @@ const Views = (() => {
     </section>`;
   }
 
-  return { overview, players, newTournament, tournamentPage, scorePage,
+  return { overview, players, newTournament, tournamentPage, scorePage, loginGate,
            getDraft, resetDraft, shuffleDraftTeams, draftTeamCount };
 })();

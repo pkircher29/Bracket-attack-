@@ -229,6 +229,85 @@ const Bracket = (() => {
     t.updatedAt = now();
   }
 
+  /* ---------- host/admin operations ----------
+     Each returns null on success or an error string. */
+
+  // Reopen a finished match to fix a score. Blocked if the teams involved
+  // already played later matches (reopen those first, newest to oldest).
+  function reopenMatch(t, m) {
+    if (m.bye || m.status !== 'done') return 'Only finished matches can be reopened.';
+    const w = m.winner, l = loserOf(m);
+    const downstream = t.matches.filter(x => x.id !== m.id && (x.isThird || x.round > m.round) &&
+      ((w && (x.teamA === w || x.teamB === w)) || (l && (x.teamA === l || x.teamB === l))));
+    if (downstream.some(x => x.status !== 'pending')) {
+      return 'Later matches involving these teams were already played — reopen those first.';
+    }
+    for (const x of downstream) {
+      if (x.teamA === w || x.teamA === l) x.teamA = null;
+      if (x.teamB === w || x.teamB === l) x.teamB = null;
+      x.updatedAt = now();
+    }
+    const third = t.matches.find(x => x.isThird);
+    if (third && third.skipped && m.round === t.rounds - 1) {
+      Object.assign(third, { teamA: null, teamB: null, scoreA: 0, scoreB: 0,
+        status: 'pending', winner: null, skipped: false, updatedAt: now() });
+    }
+    m.status = 'live'; m.winner = null; m.endedAt = null; m.updatedAt = now();
+    if (t.status === 'complete') { t.status = 'active'; t.placements = { first: null, second: null, third: null }; }
+    t.updatedAt = now();
+    Store.save();
+    return null;
+  }
+
+  // Fresh bracket, same teams, reshuffled draw.
+  function restart(t) {
+    buildMatches(t);
+    t.status = 'active';
+    t.placements = { first: null, second: null, third: null };
+    t.updatedAt = now();
+    Store.save();
+  }
+
+  // Swap two teams between their current (not-yet-started) bracket slots.
+  function swapSlots(t, idA, idB) {
+    if (!idA || !idB || idA === idB) return 'Pick two different teams.';
+    const map = new Map();
+    for (const m of t.matches) {
+      if (m.status !== 'pending') continue;
+      if (m.teamA) map.set(m.teamA, { m, side: 'teamA' });
+      if (m.teamB) map.set(m.teamB, { m, side: 'teamB' });
+    }
+    const a = map.get(idA), b = map.get(idB);
+    if (!a || !b) return 'Both teams must be waiting in matches that have not started.';
+    a.m[a.side] = idB;
+    b.m[b.side] = idA;
+    a.m.updatedAt = now(); b.m.updatedAt = now(); t.updatedAt = now();
+    Store.save();
+    return null;
+  }
+
+  // Swap two players between teams, or sub in a pool player for a rostered one.
+  function movePlayer(t, pidA, pidB) {
+    if (!pidA || !pidB || pidA === pidB) return 'Pick two different players.';
+    const teamOfP = (pid) => t.teams.find(tm => tm.playerIds.includes(pid));
+    const ta = teamOfP(pidA);
+    if (!ta) return 'The first pick must be a player currently on a team.';
+    const tb = teamOfP(pidB);
+    const ia = ta.playerIds.indexOf(pidA);
+    if (tb) {
+      const ib = tb.playerIds.indexOf(pidB);
+      ta.playerIds[ia] = pidB;
+      tb.playerIds[ib] = pidA;
+      tb.roster = tb.playerIds.map(pid => ({ id: pid, name: Store.playerName(pid) }));
+    } else {
+      ta.playerIds[ia] = pidB;
+    }
+    ta.roster = ta.playerIds.map(pid => ({ id: pid, name: Store.playerName(pid) }));
+    t.updatedAt = now();
+    Store.save();
+    return null;
+  }
+
   function checkComplete(t) {
     const final = t.matches.find(x => x.isFinal);
     const third = t.matches.find(x => x.isThird);
@@ -297,5 +376,6 @@ const Bracket = (() => {
   }
 
   return { createTournament, isReady, planStart, applyStart, finishMatch, touchMatch,
+           reopenMatch, restart, swapSlots, movePlayer,
            mergeTournaments, reconcile, progress, roundName, loserOf };
 })();
