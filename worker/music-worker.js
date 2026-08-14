@@ -304,11 +304,18 @@ async function api(req, env, url, p) {
   if (p === '/api/search' && req.method === 'GET') {
     const q = url.searchParams.get('q') || '';
     if (q.length < 2) return json({ tracks: [] });
-    const tok = await clientToken(env, c);
-    const res = await fetch(`${apiBase(c)}/v1/search?` + new URLSearchParams({ q, type: 'track', limit: '20' }),
+    // Dev-mode Spotify apps cap /v1/search at limit=10 — anything higher gets
+    // a 400 "Invalid limit". Prefer the host user token; app-only fallback.
+    const tok = (await hostToken(env, c)) || (await clientToken(env, c));
+    const res = await fetch(`${apiBase(c)}/v1/search?` + new URLSearchParams({ q, type: 'track', limit: '10', market: 'US' }),
       { headers: { Authorization: 'Bearer ' + tok } });
-    const d = await res.json();
-    return json({ tracks: ((d.tracks && d.tracks.items) || []).map(slimTrack) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.tracks) {
+      // don't swallow Spotify errors as "no matches"
+      const msg = (d.error && d.error.message) || `Spotify search failed (HTTP ${res.status})`;
+      return json({ error: msg, spotify_status: res.status }, 502);
+    }
+    return json({ tracks: (d.tracks.items || []).map(slimTrack) });
   }
 
   /* ----- requests ----- */
@@ -432,7 +439,8 @@ async function api(req, env, url, p) {
     // fallback: top tracks by the last played track's lead artist
     const artistId = last && last.artists && last.artists[0] && last.artists[0].id;
     if (!artistId) return json({ source: 'none' });
-    const tok = await clientToken(env, c);
+    // same dev-mode catalog restriction as search: prefer the host token
+    const tok = ht || (await clientToken(env, c));
     const d = await (await fetch(`${apiBase(c)}/v1/artists/${artistId}/top-tracks?market=US`,
       { headers: { Authorization: 'Bearer ' + tok } })).json();
     const pick = pickFrom(d.tracks || []);
