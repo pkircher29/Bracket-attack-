@@ -78,6 +78,31 @@ in [`worker/worker.js`](worker/worker.js), deployed at
 4. Repeat with as many simultaneous tournaments as you like. The overview
    page keeps the master leaderboard.
 
+## 📻 Junkyard Jukebox (music.junkyardolympics.com)
+
+The party's music platform lives in [`music/`](music/) with its own worker
+([`worker/music-worker.js`](worker/music-worker.js), deployed as
+`junkyard-music`, routed to `music.junkyardolympics.com/*`, same D1 database):
+
+- Guests log in with a **username + shared party password**.
+- **Spotify search** (track, artist, album, release year, popularity, album
+  art) via the client-credentials flow.
+- Requests enter a **weighted round-robin queue**: guests with fewer songs
+  played go first. More than **10 requests in 2 minutes** = automatic
+  **20-minute rejection** and the offender's rotation slot moves to the end
+  of the line.
+- When the queue is empty, **autoplay** picks from the host's Spotify
+  **Liked Songs** (falling back to the last played track's artist
+  top-tracks — Spotify retired its recommendations endpoint for new apps).
+- The **host player console** (`/#/player`) links a Spotify **Premium**
+  account and plays through the browser via the Web Playback SDK, advancing
+  the queue automatically.
+
+One-time host setup at `music.junkyardolympics.com/#/setup`: set the party
+password, then create a free app at developer.spotify.com/dashboard, add the
+shown redirect URI, paste the client ID/secret, and click *connect Spotify*
+on the host device.
+
 ## Tech
 
 Vanilla HTML/CSS/JS. No frameworks, no build step, works offline once loaded.
