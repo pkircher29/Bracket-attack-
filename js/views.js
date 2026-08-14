@@ -99,6 +99,22 @@ const Views = (() => {
       : `<div class="empty">Standings appear once a tournament finishes.</div>`}
     </section>
 
+    <section>
+      <div class="sec-head"><h2>Live Sync</h2>
+        <span id="sync-status" class="muted small">${typeof Sync !== 'undefined' ? Sync.statusText() : ''}</span></div>
+      <div class="card">
+        <div class="addrow">
+          <input id="sync-room" value="${typeof Sync !== 'undefined' ? esc(Sync.room) : ''}"
+                 placeholder="room code" maxlength="40">
+          <button class="btn btn-accent" data-action="sync-join">Join room</button>
+          <button class="btn btn-ghost" data-action="sync-toggle">${typeof Sync !== 'undefined' && Sync.enabled ? 'Turn sync off' : 'Turn sync on'}</button>
+        </div>
+        <p class="muted small">Every phone or tablet that opens this site and joins the same room shares one
+          live scoreboard — scores, brackets and standings update everywhere within a few seconds.
+          Keep one scorekeeper per match; everything else merges automatically.</p>
+      </div>
+    </section>
+
     <section class="datatools">
       <button class="btn btn-ghost btn-sm" data-action="export-data">⬇ Export backup</button>
       <label class="btn btn-ghost btn-sm">⬆ Import backup<input type="file" id="import-file" accept=".json" hidden></label>

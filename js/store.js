@@ -4,14 +4,32 @@
 const Store = (() => {
   const KEY = 'bracket-attack-v1';
 
-  let state = load() || { players: [], staticTeams: [], tournaments: [] };
+  let state = load() || blank();
+
+  function blank() {
+    return { players: [], staticTeams: [], tournaments: [],
+             deleted: { players: {}, staticTeams: {}, tournaments: {} } };
+  }
 
   function load() {
-    try { return JSON.parse(localStorage.getItem(KEY)); }
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY));
+      if (s && !s.deleted) s.deleted = { players: {}, staticTeams: {}, tournaments: {} };
+      return s;
+    }
     catch { return null; }
   }
 
+  const now = () => new Date().toISOString();
+
   function save() {
+    localStorage.setItem(KEY, JSON.stringify(state));
+    if (typeof Sync !== 'undefined') Sync.schedulePush();
+  }
+
+  // adopt a merged state coming from sync (persist without re-pushing)
+  function replace(newState) {
+    state = newState;
     localStorage.setItem(KEY, JSON.stringify(state));
   }
 
@@ -23,7 +41,7 @@ const Store = (() => {
     for (const raw of names) {
       const name = raw.trim();
       if (!name || existing.has(name.toLowerCase())) continue;
-      state.players.push({ id: uid('p'), name });
+      state.players.push({ id: uid('p'), name, updatedAt: now() });
       existing.add(name.toLowerCase());
       added++;
     }
@@ -32,9 +50,20 @@ const Store = (() => {
   }
 
   function removePlayer(id) {
+    const ts = now();
+    state.deleted.players[id] = ts;
     state.players = state.players.filter(p => p.id !== id);
-    state.staticTeams.forEach(t => t.playerIds = t.playerIds.filter(pid => pid !== id));
-    state.staticTeams = state.staticTeams.filter(t => t.playerIds.length > 0);
+    state.staticTeams.forEach(t => {
+      if (t.playerIds.includes(id)) {
+        t.playerIds = t.playerIds.filter(pid => pid !== id);
+        t.updatedAt = ts;
+      }
+    });
+    state.staticTeams = state.staticTeams.filter(t => {
+      if (t.playerIds.length > 0) return true;
+      state.deleted.staticTeams[t.id] = ts;
+      return false;
+    });
     save();
   }
 
@@ -54,11 +83,12 @@ const Store = (() => {
   /* ---------- static teams ---------- */
 
   function addStaticTeam(name, playerIds) {
-    state.staticTeams.push({ id: uid('st'), name, playerIds: [...playerIds] });
+    state.staticTeams.push({ id: uid('st'), name, playerIds: [...playerIds], updatedAt: now() });
     save();
   }
 
   function removeStaticTeam(id) {
+    state.deleted.staticTeams[id] = now();
     state.staticTeams = state.staticTeams.filter(t => t.id !== id);
     save();
   }
@@ -70,6 +100,7 @@ const Store = (() => {
   }
 
   function removeTournament(id) {
+    state.deleted.tournaments[id] = now();
     state.tournaments = state.tournaments.filter(t => t.id !== id);
     save();
   }
@@ -143,18 +174,24 @@ const Store = (() => {
       throw new Error('Not a Bracket Attack backup file.');
     }
     data.staticTeams = data.staticTeams || [];
+    data.deleted = data.deleted || { players: {}, staticTeams: {}, tournaments: {} };
     state = data;
     save();
   }
 
   function resetAll() {
-    state = { players: [], staticTeams: [], tournaments: [] };
+    const ts = now();
+    const deleted = state.deleted || { players: {}, staticTeams: {}, tournaments: {} };
+    state.players.forEach(p => deleted.players[p.id] = ts);
+    state.staticTeams.forEach(t => deleted.staticTeams[t.id] = ts);
+    state.tournaments.forEach(t => deleted.tournaments[t.id] = ts);
+    state = { players: [], staticTeams: [], tournaments: [], deleted };
     save();
   }
 
   return {
     get state() { return state; },
-    save, addPlayers, removePlayer, playerName,
+    save, replace, addPlayers, removePlayer, playerName,
     addStaticTeam, removeStaticTeam,
     tournament, removeTournament, teamOf, teamName,
     busyPlayers, leaderboard,
