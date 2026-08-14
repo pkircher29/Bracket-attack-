@@ -7,7 +7,8 @@ const Views = (() => {
 
   function loginGate() {
     return `
-    <section class="hero" style="max-width:400px;margin:6vh auto 0">
+    <section class="hero" style="max-width:440px;margin:4vh auto 0">
+      <img class="heroart" src="assets/junkyard-hero.jpg" alt="Junkyard Olympics">
       <div class="hero-stripe"></div>
       <h1>Junkyard <em>Olympics</em></h1>
       <p class="muted">One login for the scoreboard and the jukebox.</p>
@@ -15,6 +16,43 @@ const Views = (() => {
         <label class="f">Your name<input id="a-name" maxlength="24" autocomplete="off"></label>
         <label class="f">Party password<input id="a-pass" type="password"></label>
         <button class="btn btn-accent btn-lg" data-action="auth-login">🏆 Let me in</button>
+      </div>
+    </section>`;
+  }
+
+  // QR-link landing: the password is baked into the link, so a guest only
+  // types their name. Same-device identity persists in localStorage.
+  function joinGate(code) {
+    return `
+    <section class="hero" style="max-width:440px;margin:4vh auto 0">
+      <img class="heroart" src="assets/junkyard-hero.jpg" alt="Junkyard Olympics">
+      <div class="hero-stripe"></div>
+      <h1>Junkyard <em>Olympics</em></h1>
+      <p class="muted">You scanned the poster — one step left. What do we call you?</p>
+      <div class="card form" style="margin-top:18px;text-align:left">
+        <label class="f">Your name<input id="j-name" maxlength="24" autocomplete="off" placeholder="e.g. Big Wrench Wanda"></label>
+        <button class="btn btn-accent btn-lg" data-action="join-go" data-code="${esc(code)}">🔥 I'm in</button>
+        <p class="muted small" style="margin-top:8px">No password, no account — your phone remembers you all day.</p>
+      </div>
+    </section>`;
+  }
+
+  // Host tool: bake the party password into a QR poster for the gate/TV.
+  function qrPage() {
+    if (!Auth.isHost) return `<section><div class="empty">🎛 Hosts only.</div></section>`;
+    return `
+    <section>
+      <a class="backlink" href="#/">← Overview</a>
+      <h2>📱 Party signup QR</h2>
+      <div class="card form">
+        <p class="muted small">Enter the party password — it gets baked into the link so guests
+          scan, type their name, and they're in. One scan signs them into the scoreboard <b>and</b> the jukebox.
+          Print it and tape it to the cooler.</p>
+        <div class="addrow">
+          <input id="qr-pass" type="text" placeholder="party password" autocomplete="off">
+          <button class="btn btn-accent" data-action="qr-make">⚙ Generate poster</button>
+        </div>
+        <div id="qr-out"></div>
       </div>
     </section>`;
   }
@@ -84,10 +122,12 @@ const Views = (() => {
       </tr>`).join('');
 
     return `
-    <section class="hero">
+    <section class="hero hero-banner">
+      <img class="heroart" src="assets/junkyard-hero.jpg" alt="">
       <div class="hero-stripe"></div>
       <h1>Junkyard <em>Olympics</em></h1>
       <p class="muted">The tournament of tournaments. Scrap for glory. 🔧</p>
+      ${Auth.isHost ? '<p style="margin-top:8px"><a class="btn btn-ghost btn-sm" href="#/qr">📱 Party signup QR</a></p>' : ''}
       <div class="stats">
         <div class="stat"><b>${liveMatches.length}</b><span>live matches</span></div>
         <div class="stat"><b>${active.length}</b><span>active tournaments</span></div>
@@ -531,5 +571,6 @@ const Views = (() => {
   }
 
   return { overview, players, newTournament, tournamentPage, scorePage, loginGate,
+           joinGate, qrPage,
            getDraft, resetDraft, shuffleDraftTeams, draftTeamCount };
 })();

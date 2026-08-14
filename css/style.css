@@ -389,3 +389,53 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 /* ---- double-elimination bracket sections ---- */
 .brh { margin: 18px 0 8px; font-size: 1.05rem; }
 .brh .muted.small { font-weight: 400; }
+
+/* ==== Chris's brand pass: comic outlines, halftone grit, junkyard palette ==== */
+:root {
+  --olive: #7a8450; --cream: #ece1c4; --rustred: #c23b22; --ink: #131009;
+}
+/* halftone dot grit over the background */
+body {
+  background-image:
+    radial-gradient(rgba(236, 225, 196, .05) 1px, transparent 1.4px),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%);
+  background-size: 14px 14px, 100% 100%;
+}
+h1, h2 { color: var(--cream); }
+/* comic-book panels: fat ink outlines + offset shadow */
+.card, .tcard, .match, .qitem, .teamcard, .albumcard, .stat {
+  border: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, .55);
+}
+.btn-accent {
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, .55);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .35);
+}
+.btn-accent:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 rgba(0, 0, 0, .55); }
+.chip { border: 1.5px solid var(--ink); }
+.bar { border: 1.5px solid var(--ink); }
+.pod-1 b { color: var(--gold); }
+/* hero artwork */
+.heroart {
+  display: block; width: 100%; max-width: 560px; margin: 0 auto 14px;
+  border: 3px solid var(--ink); border-radius: var(--radius);
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, .55);
+}
+.hero-banner .heroart { max-width: 720px; }
+/* signup QR poster */
+.qr-poster {
+  margin-top: 14px; padding: 22px; text-align: center;
+  background: var(--cream); color: var(--ink);
+  border: 4px solid var(--ink); border-radius: var(--radius);
+  box-shadow: 8px 8px 0 rgba(0, 0, 0, .55);
+}
+.qr-poster h2 { color: var(--ink); margin: 12px 0 8px; letter-spacing: .04em; }
+.qr-poster p { color: #4a4335; font-weight: 600; }
+.qr-poster .qr-hero { width: 100%; max-width: 380px; border: 3px solid var(--ink); border-radius: 12px; }
+.qr-poster .qr-code svg { width: 260px; height: 260px; border: 3px solid var(--ink); background: #fff; }
+@media print {
+  body * { visibility: hidden; }
+  .qr-poster, .qr-poster * { visibility: visible; }
+  .qr-poster { position: absolute; inset: 0; margin: 0; box-shadow: none; }
+}

@@ -97,6 +97,7 @@ function trackMeta(t) {
 function vLogin() {
   return `
   <div class="login">
+    <img class="heroart" src="https://junkyardolympics.com/assets/junkyard-hero.jpg" alt="">
     <div class="hero-stripe"></div>
     <h1>Junkyard <em>Jukebox</em></h1>
     <p class="muted">You pick it, we blast it. Fair rotation, no hogging the aux.</p>
@@ -104,6 +105,20 @@ function vLogin() {
     <input id="l-pass" type="password" placeholder="Party password" autocomplete="off">
     <button class="btn btn-accent btn-lg" data-action="join">🎶 Let me in</button>
     <p class="muted small">Looking for the scoreboard? <a href="https://junkyardolympics.com" style="color:var(--accent)">🏆 junkyardolympics.com</a></p>
+  </div>`;
+}
+
+// QR-link landing (same code as the bracket site's poster): name only.
+function vJoinLink(code) {
+  return `
+  <div class="login">
+    <img class="heroart" src="https://junkyardolympics.com/assets/junkyard-hero.jpg" alt="">
+    <div class="hero-stripe"></div>
+    <h1>Junkyard <em>Jukebox</em></h1>
+    <p class="muted">You scanned the poster — what do we call you?</p>
+    <input id="jl-name" placeholder="Your name" maxlength="24" autocomplete="off">
+    <button class="btn btn-accent btn-lg" data-action="join-link" data-code="${esc(code)}">🔥 I'm in</button>
+    <p class="muted small">No password needed — your phone remembers you all day.</p>
   </div>`;
 }
 
@@ -259,6 +274,12 @@ async function render() {
   nav();
   const app = $('#app');
 
+  if (r.startsWith('join/')) {
+    if (loggedIn()) { location.hash = '#/search'; return; }
+    app.innerHTML = vJoinLink(r.slice(5));
+    const n = $('#jl-name'); if (n) n.focus();
+    return;
+  }
   if (r === 'setup') {
     const st = await api('/api/status');
     // setup lives in the admin menu; open only for hosts (or first-run bootstrap)
@@ -516,6 +537,20 @@ document.addEventListener('click', async (e) => {
     }
     if (act === 'logout') { localStorage.removeItem('jm-token'); localStorage.removeItem('jm-role'); clearSharedCookie(); }
     if (act === 'back') { e.preventDefault(); history.length > 1 ? history.back() : (location.hash = '#/search'); }
+    if (act === 'join-link') {
+      const name = $('#jl-name').value.trim();
+      if (!name) { toast('Type your name first!', 'error'); return; }
+      let pass = '';
+      try { pass = decodeURIComponent(escape(atob(decodeURIComponent(el.dataset.code || '')))); } catch {}
+      if (!pass) { toast('This signup link is broken — grab the host.', 'error'); return; }
+      const d = await api('/api/join', { method: 'POST', body: JSON.stringify({ name, password: pass }) });
+      localStorage.setItem('jm-token', d.token);
+      localStorage.setItem('jm-name', d.user.name);
+      localStorage.setItem('jm-role', d.user.role || 'guest');
+      writeSharedCookie();
+      toast(`Welcome, <b>${esc(d.user.name)}</b>! 🎶`);
+      location.hash = '#/search';
+    }
     if (act === 'req') {
       const tracks = JSON.parse($('#results').dataset.tracks || '[]');
       const t = tracks[Number(el.dataset.i)];
@@ -574,6 +609,10 @@ document.addEventListener('click', async (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && $('#l-pass') && document.activeElement === $('#l-pass')) {
     const btn = $('[data-action="join"]');
+    if (btn) btn.click();
+  }
+  if (e.key === 'Enter' && $('#jl-name') && document.activeElement === $('#jl-name')) {
+    const btn = $('[data-action="join-link"]');
     if (btn) btn.click();
   }
 });

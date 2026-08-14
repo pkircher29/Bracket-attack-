@@ -10,6 +10,8 @@
     if (!parts.length) return { name: 'home' };
     if (parts[0] === 'players') return { name: 'players' };
     if (parts[0] === 'new') return { name: 'new' };
+    if (parts[0] === 'join') return { name: 'join', code: parts[1] || '' };
+    if (parts[0] === 'qr') return { name: 'qr' };
     if (parts[0] === 't' && parts[1]) return { name: 'tournament', tid: parts[1] };
     if (parts[0] === 'm' && parts[1] && parts[2]) return { name: 'match', tid: parts[1], mid: parts[2] };
     return { name: 'home' };
@@ -26,7 +28,18 @@
     const app = $('#app');
     const who = $('#who');
     if (who) who.textContent = Auth.ok ? `👤 ${Auth.name}${Auth.isHost ? ' 🎛' : ''} ↩` : '';
+    // QR signup lands here — name-only join, no password typing (thanks Chris)
+    if (route.name === 'join') {
+      if (Auth.ok) { location.hash = '#/'; return; }
+      app.innerHTML = Views.joinGate(route.code);
+      const n = $('#j-name'); if (n) n.focus();
+      return;
+    }
     if (!Auth.ok) { app.innerHTML = Views.loginGate(); return; }
+    if (route.name === 'qr') {
+      app.innerHTML = Views.qrPage();
+      return;
+    }
     switch (route.name) {
       case 'players':    app.innerHTML = Views.players(); break;
       case 'new':        app.innerHTML = Views.newTournament(); break;
@@ -171,6 +184,47 @@
         Views.resetDraft();
         toast(`🚀 <b>${esc(t.name)}</b> is underway — bracket drawn!`, 'ok');
         location.hash = `#/t/${t.id}`;
+        break;
+      }
+
+      /* QR signup: password rides in the link, guest only types a name */
+      case 'join-go': {
+        const name = $('#j-name').value.trim();
+        if (!name) { toast('Type your name first!', 'error'); break; }
+        let pass = '';
+        try { pass = decodeURIComponent(escape(atob(decodeURIComponent(el.dataset.code || '')))); } catch {}
+        if (!pass) { toast('This signup link is broken — grab the host.', 'error'); break; }
+        Auth.login(name, pass).then(s => {
+          toast(`Welcome to the Junkyard Olympics, <b>${esc(s.name)}</b>! 🏆`, 'ok');
+          location.hash = '#/';
+        }).catch(err => toast(esc(err.message), 'error'));
+        break;
+      }
+
+      /* host QR poster generator */
+      case 'qr-make': {
+        const pass = $('#qr-pass').value;
+        if (!pass) { toast('Enter the party password to bake it into the QR.', 'error'); break; }
+        const code = btoa(unescape(encodeURIComponent(pass)));
+        const url = `${location.origin}/#/join/${encodeURIComponent(code)}`;
+        const qr = qrcode(0, 'M');
+        qr.addData(url);
+        qr.make();
+        $('#qr-out').innerHTML = `
+          <div class="qr-poster" id="qr-poster">
+            <img class="qr-hero" src="assets/junkyard-hero.jpg" alt="">
+            <h2>SCAN TO JOIN THE GAMES</h2>
+            <div class="qr-code">${qr.createSvgTag({ cellSize: 6, margin: 2 })}</div>
+            <p>Point your camera here → type your name → compete. 🏆🎶</p>
+          </div>
+          <div class="addrow" style="margin-top:10px">
+            <input value="${esc(url)}" readonly onclick="this.select()">
+            <button class="btn btn-ghost" data-action="qr-print">🖨 Print poster</button>
+          </div>`;
+        break;
+      }
+      case 'qr-print': {
+        window.print();
         break;
       }
 
@@ -333,6 +387,14 @@
       render();
     },
   };
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const a = document.activeElement;
+    if (a === $('#j-name')) { const b = $('[data-action="join-go"]'); if (b) b.click(); }
+    if (a === $('#a-pass')) { const b = $('[data-action="auth-login"]'); if (b) b.click(); }
+    if (a === $('#qr-pass')) { const b = $('[data-action="qr-make"]'); if (b) b.click(); }
+  });
 
   addEventListener('hashchange', render);
   render();
