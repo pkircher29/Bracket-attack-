@@ -35,6 +35,12 @@ const TYPES = {
   md: 'text/plain; charset=utf-8',
 };
 
+// Event HQ relay: hq.junkyardolympics.com is routed to this worker, which
+// forwards everything to Chris's LAN control tower via the AutoKJ VPS
+// (tailnet bridge: VPS:8790 -> RecRoomRig 100.83.47.74:8790). Guests get the
+// full HQ app over HTTPS on the party domain, no Tailscale required.
+const HQ_ORIGIN = 'http://74.208.181.52:8790';
+
 export default {
   async fetch(req, env) {
     const cors = {
@@ -44,6 +50,16 @@ export default {
       'Content-Type': 'application/json',
     };
     const url = new URL(req.url);
+
+    if (url.hostname === 'hq.junkyardolympics.com') {
+      try {
+        const upstream = await fetch(new Request(HQ_ORIGIN + url.pathname + url.search, req));
+        return new Response(upstream.body, { status: upstream.status, headers: upstream.headers });
+      } catch (e) {
+        return new Response('Event HQ is not reachable right now — is the control tower (and its tailnet bridge) up?',
+          { status: 502, headers: { 'Content-Type': 'text/plain' } });
+      }
+    }
     const m = url.pathname.match(/^\/r\/([a-zA-Z0-9_-]{1,64})$/);
 
     /* ---------- sync API ---------- */
