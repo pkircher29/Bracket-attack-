@@ -8,7 +8,11 @@
 'use strict';
 
 const Sync = (() => {
-  const DEFAULT_URL = 'https://bracket-attack-sync.pkircher.workers.dev';
+  // When the app is served by the sync worker itself (junkyardolympics.com
+  // or workers.dev), the API lives on the same origin. Anywhere else
+  // (GitHub Pages, local file) we talk to the worker cross-origin.
+  const SAME_ORIGIN = /(^|\.)junkyardolympics\.com$|\.workers\.dev$/i.test(location.hostname);
+  const DEFAULT_URL = SAME_ORIGIN ? '' : 'https://bracket-attack-sync.pkircher.workers.dev';
 
   const url = localStorage.getItem('ba-sync-url') || DEFAULT_URL;
   let room = (localStorage.getItem('ba-room') || 'junkyard').toLowerCase();

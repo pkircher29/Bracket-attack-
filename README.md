@@ -38,13 +38,19 @@ medal table. Random teams get junkyard-grade names like *Rusty Hubcaps* and
 
 ## Running it
 
-It's a zero-build static web app — no server, no dependencies.
+**The live site is [junkyardolympics.com](https://junkyardolympics.com).**
 
-- **Locally:** just open `index.html` in a browser (or `python3 -m http.server`
+The Cloudflare Worker in [`worker/worker.js`](worker/worker.js) serves the
+site (routed on `junkyardolympics.com/*` and `www.junkyardolympics.com/*`) by
+proxying this repo's `main` branch with edge caching — **merge to `main` and
+the live site updates within ~2 minutes**, no deploy step.
+
+It's still a zero-build static app, so it also runs anywhere else:
+
+- **Locally:** open `index.html` in a browser (or `python3 -m http.server`
   in the repo folder and visit `http://localhost:8000`).
-- **Hosted free on GitHub Pages:** repo **Settings → Pages → Deploy from a
-  branch → `main` / root** — your app goes live at
-  `https://<user>.github.io/Bracket-attack-/`.
+- Any static host (GitHub Pages etc.) works too — sync automatically talks
+  to the worker cross-origin.
 
 ## Multi-device sync
 
