@@ -31,6 +31,43 @@ const loggedIn = () => !!localStorage.getItem('jm-token');
 const myName = () => localStorage.getItem('jm-name') || '';
 const isHost = () => localStorage.getItem('jm-role') === 'host';
 
+/* ---- shared session cookie: one login for both junkyardolympics.com sites ---- */
+
+function writeSharedCookie() {
+  const v = encodeURIComponent(JSON.stringify({
+    token: localStorage.getItem('jm-token'),
+    name: localStorage.getItem('jm-name'),
+    role: localStorage.getItem('jm-role') || 'guest',
+  }));
+  const base = `jo_auth=${v}; path=/; max-age=604800; SameSite=Lax`;
+  document.cookie = base;
+  if (location.hostname.endsWith('junkyardolympics.com')) {
+    document.cookie = base + '; domain=.junkyardolympics.com';
+  }
+}
+
+function clearSharedCookie() {
+  document.cookie = 'jo_auth=; path=/; max-age=0';
+  if (location.hostname.endsWith('junkyardolympics.com')) {
+    document.cookie = 'jo_auth=; path=/; max-age=0; domain=.junkyardolympics.com';
+  }
+}
+
+// adopt a session created on the bracket site
+(() => {
+  if (loggedIn()) return;
+  const m = document.cookie.match(/(?:^|;\s*)jo_auth=([^;]+)/);
+  if (!m) return;
+  try {
+    const s = JSON.parse(decodeURIComponent(m[1]));
+    if (s && s.token) {
+      localStorage.setItem('jm-token', s.token);
+      localStorage.setItem('jm-name', s.name || '');
+      localStorage.setItem('jm-role', s.role || 'guest');
+    }
+  } catch {}
+})();
+
 /* ---------- views ---------- */
 
 let pollTimer = null;
@@ -58,7 +95,6 @@ function vLogin() {
     <input id="l-name" placeholder="Your name" maxlength="24" autocomplete="off">
     <input id="l-pass" type="password" placeholder="Party password" autocomplete="off">
     <button class="btn btn-accent btn-lg" data-action="join">🎶 Let me in</button>
-    <p class="muted small">First time here? The host sets things up at <a href="#/setup" style="color:var(--accent)">setup</a>.</p>
   </div>`;
 }
 
@@ -134,7 +170,8 @@ function vPlayer() {
     <div class="muted">Checking Spotify link…</div>
   </div>
   <p class="muted small" style="margin-top:12px">This page plays the music — open it on the device wired to the
-  speakers (Spotify Premium required). It auto-advances the queue and falls back to autoplay when empty.</p>`;
+  speakers (Spotify Premium required). It auto-advances the queue and falls back to autoplay when empty.
+  &nbsp;·&nbsp; <a href="#/setup" style="color:var(--accent)">⚙ Setup</a></p>`;
 }
 
 function vSetup(st) {
@@ -177,6 +214,11 @@ async function render() {
 
   if (r === 'setup') {
     const st = await api('/api/status');
+    // setup lives in the admin menu; open only for hosts (or first-run bootstrap)
+    if (st.configured && !isHost()) {
+      app.innerHTML = '<div class="empty">🎛 Hosts only.</div>';
+      return;
+    }
     app.innerHTML = vSetup(st);
     return;
   }
@@ -342,11 +384,12 @@ document.addEventListener('click', async (e) => {
       localStorage.setItem('jm-token', d.token);
       localStorage.setItem('jm-name', d.user.name);
       localStorage.setItem('jm-role', d.user.role || 'guest');
+      writeSharedCookie();
       toast(d.user.role === 'host' ? `🎛 Host console unlocked — welcome, <b>${esc(d.user.name)}</b>!`
         : `Welcome, <b>${esc(d.user.name)}</b>! 🎶`);
       location.hash = d.user.role === 'host' ? '#/player' : '#/search';
     }
-    if (act === 'logout') { localStorage.removeItem('jm-token'); localStorage.removeItem('jm-role'); }
+    if (act === 'logout') { localStorage.removeItem('jm-token'); localStorage.removeItem('jm-role'); clearSharedCookie(); }
     if (act === 'req') {
       const tracks = JSON.parse($('#results').dataset.tracks || '[]');
       const t = tracks[Number(el.dataset.i)];

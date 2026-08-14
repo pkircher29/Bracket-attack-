@@ -37,7 +37,7 @@ export default {
     const cors = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET,PUT,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type,Authorization',
       'Content-Type': 'application/json',
     };
     const url = new URL(req.url);
@@ -59,6 +59,18 @@ export default {
       }
 
       if (req.method === 'PUT') {
+        // Writes require a valid party login (token from the jukebox user db —
+        // one login works on both sites). Reads stay open. If the jukebox is
+        // not configured yet, writes stay open too (bootstrap/dev).
+        try {
+          const pw = await env.DB.prepare("SELECT v FROM music_config WHERE k = 'shared_password'").first();
+          if (pw && pw.v) {
+            const auth = req.headers.get('Authorization') || '';
+            const tok = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+            const u = tok ? await env.DB.prepare('SELECT id FROM music_users WHERE token = ?').bind(tok).first() : null;
+            if (!u) return new Response(JSON.stringify({ error: 'login required' }), { status: 401, headers: cors });
+          }
+        } catch (e) { /* music tables absent -> open */ }
         let body;
         try { body = await req.json(); } catch {
           return new Response(JSON.stringify({ error: 'bad json' }), { status: 400, headers: cors });

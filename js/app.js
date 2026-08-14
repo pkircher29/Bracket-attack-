@@ -24,6 +24,9 @@
   function render() {
     route = parseHash();
     const app = $('#app');
+    const who = $('#who');
+    if (who) who.textContent = Auth.ok ? `👤 ${Auth.name}${Auth.isHost ? ' 🎛' : ''} ↩` : '';
+    if (!Auth.ok) { app.innerHTML = Views.loginGate(); return; }
     switch (route.name) {
       case 'players':    app.innerHTML = Views.players(); break;
       case 'new':        app.innerHTML = Views.newTournament(); break;
@@ -166,6 +169,63 @@
         Views.resetDraft();
         toast(`🚀 <b>${esc(t.name)}</b> is underway — bracket drawn!`, 'ok');
         location.hash = `#/t/${t.id}`;
+        break;
+      }
+
+      /* auth */
+      case 'auth-login': {
+        const name = $('#a-name').value.trim();
+        const pass = $('#a-pass').value;
+        if (!name || !pass) { toast('Enter your name and the party password.', 'error'); break; }
+        Auth.login(name, pass).then(s => {
+          toast(s.role === 'host' ? `🎛 Welcome, host <b>${esc(s.name)}</b>!` : `Welcome, <b>${esc(s.name)}</b>! 🏆`, 'ok');
+          render();
+        }).catch(err => toast(esc(err.message), 'error'));
+        break;
+      }
+      case 'auth-logout': {
+        e.preventDefault();
+        if (Auth.ok && confirm('Log out?')) { Auth.logout(); render(); }
+        break;
+      }
+
+      /* host/admin tools */
+      case 'reopen-match': {
+        const t = currentTournament();
+        const m = t && t.matches.find(x => x.id === el.dataset.mid);
+        if (!t || !m) break;
+        const err = Bracket.reopenMatch(t, m);
+        if (err) { toast(esc(err), 'error'); break; }
+        toast('Match reopened — fix the score and finish it again. 🎛', 'ok');
+        location.hash = `#/m/${t.id}/${m.id}`;
+        render();
+        break;
+      }
+      case 'adm-restart': {
+        const t = currentTournament();
+        if (t && confirm(`Restart "${t.name}"? All results are wiped and the bracket is redrawn with the same teams.`)) {
+          Bracket.restart(t);
+          toast('Bracket redrawn from scratch. ♻', 'ok');
+          render();
+        }
+        break;
+      }
+      case 'adm-swap-slots': {
+        const t = currentTournament();
+        if (!t) break;
+        const err = Bracket.swapSlots(t, $('#adm-slot-a').value, $('#adm-slot-b').value);
+        if (err) { toast(esc(err), 'error'); break; }
+        toast('Teams swapped to their new legs. ↔', 'ok');
+        render();
+        break;
+      }
+      case 'adm-swap-players': {
+        const t = currentTournament();
+        if (!t) break;
+        const err = Bracket.movePlayer(t, $('#adm-p-a').value, $('#adm-p-b').value);
+        if (err) { toast(esc(err), 'error'); break; }
+        toast('Players reassigned. 🔁', 'ok');
+        render();
         break;
       }
 
