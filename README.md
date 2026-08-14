@@ -1,5 +1,7 @@
 # ⚙️ Bracket Attack — Junkyard Olympics Edition
 
+**Version 1.0.0**
+
 **A tournament-of-tournaments tracker for backyard game days**, themed for the
 **Junkyard Olympics**: rust, scrap steel and caution tape. Run multiple
 tournaments — cornhole, horseshoes, ladder golf, whatever — all at the same
