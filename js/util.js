@@ -39,14 +39,15 @@ const GAME_PRESETS = [
   { name: 'Custom',      icon: '🏅', target: 11,  winBy: 0, notes: '' },
 ];
 
-/* ---------- fun random team names ---------- */
+/* ---------- fun random team names (junkyard grade) ---------- */
 
-const TEAM_ADJ = ['Blazing', 'Turbo', 'Mighty', 'Savage', 'Golden', 'Rowdy', 'Cosmic',
-  'Thundering', 'Slick', 'Iron', 'Wild', 'Electric', "Smokin'", 'Fearless', 'Lucky',
-  'Rustic', 'Flying', 'Raging', 'Sneaky', 'Grumpy'];
-const TEAM_NOUN = ['Baggers', 'Broncos', 'Hurlers', 'Legends', 'Mavericks', 'Outlaws',
-  'Renegades', 'Rockets', 'Slingers', 'Tossers', 'Titans', 'Vipers', 'Wranglers',
-  'Aces', 'Bandits', 'Chuckers', 'Hawks', 'Nomads', 'Pirates', 'Wizards'];
+const TEAM_ADJ = ['Rusty', 'Greasy', 'Scrappy', 'Dented', 'Busted', 'Crooked',
+  'Salvaged', 'Smashed', 'Oily', 'Grimy', 'Diesel', 'Chrome', 'Gritty', 'Clunky',
+  'Rickety', 'Sparky', 'Burnt', 'Bent', 'Turbo', "Smokin'"];
+const TEAM_NOUN = ['Wrenches', 'Hubcaps', 'Mufflers', 'Crowbars', 'Sprockets',
+  'Pistons', 'Lugnuts', 'Gaskets', 'Scrappers', 'Rustbuckets', 'Tailpipes',
+  'Grease Monkeys', 'Spark Plugs', 'Wreckers', 'Axles', 'Radiators',
+  'Dumpster Divers', 'Bolt Cutters', 'Junk Hounds', 'Magpies'];
 
 function randomTeamName(used = new Set()) {
   for (let i = 0; i < 60; i++) {
@@ -77,7 +78,7 @@ function toast(msg, type = 'info') {
 const Confetti = (() => {
   const canvas = () => $('#confetti');
   let parts = [], raf = null;
-  const COLORS = ['#ff7a18', '#ff2d78', '#ffd166', '#06d6a0', '#4cc9f0', '#c77dff'];
+  const COLORS = ['#ffb400', '#ff5a1e', '#e0925a', '#c8d0e0', '#06d6a0', '#ffd166'];
 
   function resize() {
     const c = canvas();

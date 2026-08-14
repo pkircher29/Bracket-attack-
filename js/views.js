@@ -67,8 +67,9 @@ const Views = (() => {
 
     return `
     <section class="hero">
-      <h1>Tournament <em>of</em> Tournaments</h1>
-      <p class="muted">Every game. Every bracket. One leaderboard.</p>
+      <div class="hero-stripe"></div>
+      <h1>Junkyard <em>Olympics</em></h1>
+      <p class="muted">The tournament of tournaments. Scrap for glory. 🔧</p>
       <div class="stats">
         <div class="stat"><b>${liveMatches.length}</b><span>live matches</span></div>
         <div class="stat"><b>${active.length}</b><span>active tournaments</span></div>
@@ -84,11 +85,11 @@ const Views = (() => {
       </div>
       ${s.tournaments.length
         ? `<div class="tgrid">${cards}</div>`
-        : `<div class="empty">No tournaments yet. Add some <a href="#/players">players</a>, then fire up your first bracket. 🌽🐴</div>`}
+        : `<div class="empty">No events yet. Add some <a href="#/players">athletes</a>, then fire up your first bracket. 🌽🐴🔩</div>`}
     </section>
 
     <section>
-      <div class="sec-head"><h2>Overall Standings</h2>
+      <div class="sec-head"><h2>Medal Table</h2>
         <span class="muted small">1st = 4 pts · 2nd = 3 · 3rd = 2 · played = 1</span></div>
       ${lb.length ? `
       <div class="tablewrap"><table class="lb">
@@ -287,7 +288,7 @@ const Views = (() => {
         <div class="pod pod-1">🥇<b>${esc(Store.teamName(t, t.placements.first))}</b><span>4 pts each</span></div>
         ${t.placements.second ? `<div class="pod pod-2">🥈<b>${esc(Store.teamName(t, t.placements.second))}</b><span>3 pts each</span></div>` : ''}
         ${t.placements.third ? `<div class="pod pod-3">🥉<b>${esc(Store.teamName(t, t.placements.third))}</b><span>2 pts each</span></div>` : ''}
-        <div class="pod pod-rest">🌽<b>Everyone else</b><span>1 pt each</span></div>
+        <div class="pod pod-rest">🔩<b>Everyone else</b><span>1 pt each</span></div>
       </div>` : '';
 
     const live = t.matches.filter(m => m.status === 'live');

@@ -1,9 +1,11 @@
-# 🏆 Bracket Attack
+# ⚙️ Bracket Attack — Junkyard Olympics Edition
 
-**A tournament-of-tournaments tracker for backyard game days.** Run multiple
+**A tournament-of-tournaments tracker for backyard game days**, themed for the
+**Junkyard Olympics**: rust, scrap steel and caution tape. Run multiple
 tournaments — cornhole, horseshoes, ladder golf, whatever — all at the same
 time, each with its own bracket page and scorekeeping, feeding one overall
-leaderboard.
+medal table. Random teams get junkyard-grade names like *Rusty Hubcaps* and
+*Greasy Sprockets*.
 
 ## Features
 
