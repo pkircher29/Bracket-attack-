@@ -76,6 +76,8 @@ export default {
     if (!m && HQ_HOSTS.includes(url.hostname)) {
       try {
         const upstream = await fetch(new Request(HQ_ORIGIN + url.pathname + url.search, req));
+        // network failures surface as synthetic Cloudflare 52x responses
+        if (upstream.status >= 520 && upstream.status <= 530) return hqDownPage();
         const headers = new Headers(upstream.headers);
         if (url.pathname.startsWith('/api/')) headers.set('Access-Control-Allow-Origin', '*');
         return new Response(upstream.body, { status: upstream.status, headers });
