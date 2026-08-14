@@ -231,7 +231,11 @@ async function api(req, env, url, p) {
 
   if (p === '/spotify/callback') {
     const code = url.searchParams.get('code');
-    if (!code) return new Response('Spotify said no: ' + (url.searchParams.get('error') || 'no code'), { status: 400 });
+    const err = url.searchParams.get('error');
+    // bare visit (no code, no error): someone opened the callback directly —
+    // just send them to the console
+    if (!code && !err) return Response.redirect(`${url.origin}/#/player`, 302);
+    if (!code) return new Response('Spotify said no: ' + err, { status: 400 });
     const d = await tokenRequest(c, {
       grant_type: 'authorization_code', code, redirect_uri: `${url.origin}/spotify/callback`,
     });
