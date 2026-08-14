@@ -371,7 +371,7 @@ const Views = (() => {
         <div>
           <h1>${esc(t.name)}</h1>
           <div class="chiprow">${statusChip(t)} <span class="chip chip-rule">${esc(t.game)}</span> ${rulesChips(t)}</div>
-          ${t.rules.notes ? `<p class="muted small">📋 ${esc(t.rules.notes)}</p>` : ''}
+          ${t.rules.notes ? `<p class="muted small">📋 ${esc(t.rules.notes).replace(/\n/g, '<br>')}</p>` : ''}
         </div>
       </div>
       ${podium}
@@ -466,7 +466,7 @@ const Views = (() => {
           ${m.status === 'live' ? '<span class="chip chip-live"><span class="pulse"></span>LIVE</span>' : ''}
           ${m.status === 'done' ? '<span class="chip chip-done">Final</span>' : ''}
         </div>
-        ${r.notes ? `<p class="muted small">📋 ${esc(r.notes)}</p>` : ''}
+        ${r.notes ? `<p class="muted small">📋 ${esc(r.notes).replace(/\n/g, '<br>')}</p>` : ''}
       </div>
       <div class="scoreboard">
         ${panel(teamA, 'A', m.scoreA)}

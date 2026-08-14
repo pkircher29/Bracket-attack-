@@ -39,7 +39,7 @@ const GAME_PRESETS = [
   { name: 'Washers',     icon: '🪙', target: 21,  winBy: 0, notes: 'In the cup = 3, in the box = 1. Cancellation scoring.' },
   { name: 'Junkyard Cannon', icon: '💥', target: 21, winBy: 0, notes: 'Direct hit = 3, scrap zone = 1. Adjust to whatever the cannon crew agrees on before launch.' },
   { name: 'Giant Beer Pong', icon: '🍺', target: 6, winBy: 0, notes: 'Sunk bucket = 1 point. First team to sink all 6 wins. Rebuttal shot optional.' },
-  { name: 'Can Jam',     icon: '🥏', target: 21,  winBy: 0, notes: 'Dinger = 1, deuce = 2, bucket = 3. Exactly 21 to win — direct slot shot is an instant win.' },
+  { name: 'Can Jam',     icon: '🥏', target: 21,  winBy: 0, notes: 'SCORING — Dinger (1): thrower hits the can after the partner redirects the disc into the side. Deuce (2): thrower hits the can directly, no help. Bucket (3): partner deflects the disc so it lands inside the can. INSTANT WIN: thrower slots the disc straight into the can with no help — game ends immediately.\nDEFLECTING — the partner can move anywhere but gets ONE touch per throw: no catching, carrying, or double-hits. Disc hits the ground before the can = no points. If the other team interferes with a throw, the throwing team is awarded 3 points.\nWINNING — score EXACTLY 21. Going over subtracts that throw\'s points from your score instead of adding. Equal turns: if the first team hits 21, the second team gets one last hammer turn to tie or hit an instant win.' },
   { name: 'Custom',      icon: '🏅', target: 11,  winBy: 0, notes: '' },
 ];
 
