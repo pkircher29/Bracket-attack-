@@ -45,12 +45,15 @@ async function ensureSchema(env) {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS music_users (
       id TEXT PRIMARY KEY, name TEXT UNIQUE COLLATE NOCASE, token TEXT,
       created TEXT, played INTEGER NOT NULL DEFAULT 0,
-      penalty INTEGER NOT NULL DEFAULT 0, banned_until TEXT)`),
+      penalty INTEGER NOT NULL DEFAULT 0, banned_until TEXT,
+      role TEXT NOT NULL DEFAULT 'guest')`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS music_requests (
       id TEXT PRIMARY KEY, user_id TEXT, source TEXT NOT NULL DEFAULT 'guest',
       track_id TEXT, track TEXT, status TEXT NOT NULL DEFAULT 'queued',
       requested_at TEXT, played_at TEXT)`),
   ]);
+  // migration for tables created before the role column existed
+  try { await env.DB.prepare("ALTER TABLE music_users ADD COLUMN role TEXT NOT NULL DEFAULT 'guest'").run(); } catch {}
   schemaReady = true;
 }
 
@@ -204,7 +207,7 @@ async function api(req, env, url, p) {
       return json({ error: 'wrong current party password' }, 403);
     }
     const save = {};
-    for (const k of ['shared_password', 'spotify_client_id', 'spotify_client_secret', 'spotify_refresh_token', 'accounts_base', 'api_base']) {
+    for (const k of ['shared_password', 'host_password', 'host_names', 'spotify_client_id', 'spotify_client_secret', 'spotify_refresh_token', 'accounts_base', 'api_base']) {
       if (b[k] != null && b[k] !== '') save[k] = String(b[k]).trim();
     }
     if (save.spotify_client_id || save.spotify_client_secret) { save.cc_token = ''; save.cc_expires = '0'; }
@@ -245,21 +248,48 @@ async function api(req, env, url, p) {
   if (p === '/api/join' && req.method === 'POST') {
     const b = await req.json().catch(() => ({}));
     if (!c.shared_password) return json({ error: 'not set up yet — visit /#/setup' }, 400);
-    if ((b.password || '') !== c.shared_password) return json({ error: 'wrong party password' }, 403);
     const name = String(b.name || '').trim().slice(0, 24);
     if (name.length < 2) return json({ error: 'name too short' }, 400);
+
+    // Two passwords: the shared party password logs in guests; the host
+    // password unlocks the admin console, but ONLY for the allow-listed host
+    // names. The first UUID created for each host name is the admin identity
+    // forever — guests can't claim a host name, and no new admins can appear.
+    const hostNames = JSON.parse(c.host_names || '[]').map(n => n.toLowerCase());
+    const isHostPw = !!c.host_password && (b.password || '') === c.host_password;
+    const isGuestPw = (b.password || '') === c.shared_password;
+    if (!isHostPw && !isGuestPw) return json({ error: 'wrong party password' }, 403);
+
     const token = crypto.randomUUID();
     const existing = await env.DB.prepare('SELECT * FROM music_users WHERE name = ?').bind(name).first();
     let user;
-    if (existing) {
-      await env.DB.prepare('UPDATE music_users SET token = ? WHERE id = ?').bind(token, existing.id).run();
-      user = { ...existing, token };
+
+    if (isHostPw) {
+      if (!hostNames.includes(name.toLowerCase())) {
+        return json({ error: 'the host password only works for host accounts' }, 403);
+      }
+      if (existing) {
+        await env.DB.prepare("UPDATE music_users SET token = ?, role = 'host' WHERE id = ?").bind(token, existing.id).run();
+        user = { ...existing, token, role: 'host' };
+      } else {
+        user = { id: crypto.randomUUID(), name, token, created: iso(), role: 'host' };
+        await env.DB.prepare("INSERT INTO music_users (id, name, token, created, role) VALUES (?, ?, ?, ?, 'host')")
+          .bind(user.id, name, token, user.created).run();
+      }
     } else {
-      user = { id: crypto.randomUUID(), name, token, created: iso(), played: 0, penalty: 0, banned_until: null };
-      await env.DB.prepare('INSERT INTO music_users (id, name, token, created) VALUES (?, ?, ?, ?)')
-        .bind(user.id, name, token, user.created).run();
+      if (existing && existing.role === 'host') {
+        return json({ error: 'that name is a host account — use the host password' }, 403);
+      }
+      if (existing) {
+        await env.DB.prepare('UPDATE music_users SET token = ? WHERE id = ?').bind(token, existing.id).run();
+        user = { ...existing, token };
+      } else {
+        user = { id: crypto.randomUUID(), name, token, created: iso(), role: 'guest' };
+        await env.DB.prepare('INSERT INTO music_users (id, name, token, created) VALUES (?, ?, ?, ?)')
+          .bind(user.id, name, token, user.created).run();
+      }
     }
-    return json({ token, user: { id: user.id, name: user.name } });
+    return json({ token, user: { id: user.id, name: user.name, role: user.role || 'guest' } });
   }
 
   const user = await getUser(env, req);
@@ -325,13 +355,42 @@ async function api(req, env, url, p) {
       now_playing: c.np_track ? { track: JSON.parse(c.np_track), started: c.np_started, source: c.np_source || 'request', user_name: c.np_user || '' } : null,
       up_next: order.map((o, i) => ({ pos: i + 1, id: o.id, user_name: o.user_name, track: o.track, mine: o.user_id === user.id })),
       users: users
-        .filter(u => u.played > 0 || order.some(o => o.user_id === u.id))
-        .map(u => ({ name: u.name, played: u.played, banned: !!(u.banned_until && u.banned_until > iso()) })),
-      me: { id: user.id, name: user.name, played: user.played, banned_until: (user.banned_until && user.banned_until > iso()) ? user.banned_until : null },
+        .filter(u => u.played > 0 || order.some(o => o.user_id === u.id) || (u.banned_until && u.banned_until > iso()))
+        .map(u => ({ name: u.name, played: u.played, role: u.role || 'guest', banned: !!(u.banned_until && u.banned_until > iso()) })),
+      me: { id: user.id, name: user.name, role: user.role || 'guest', played: user.played, banned_until: (user.banned_until && user.banned_until > iso()) ? user.banned_until : null },
     });
   }
 
-  /* ----- player console ----- */
+  /* ----- host-only: player console + admin actions ----- */
+
+  if (p === '/api/next' || p === '/api/played' || p === '/api/spotify/token' || p.startsWith('/api/admin/')) {
+    if ((user.role || 'guest') !== 'host') return json({ error: 'hosts only' }, 403);
+  }
+
+  if (p.startsWith('/api/admin/request/') && req.method === 'DELETE') {
+    const id = p.split('/').pop();
+    await env.DB.prepare("UPDATE music_requests SET status = 'cancelled' WHERE id = ? AND status = 'queued'").bind(id).run();
+    return json({ ok: true });
+  }
+
+  if (p === '/api/admin/unban' && req.method === 'POST') {
+    const b = await req.json().catch(() => ({}));
+    if (!b.name) return json({ error: 'missing name' }, 400);
+    await env.DB.prepare('UPDATE music_users SET banned_until = NULL, penalty = 0 WHERE name = ?').bind(String(b.name)).run();
+    return json({ ok: true });
+  }
+
+  // permanent ban: locks the guest out of requesting and clears their queue
+  if (p === '/api/admin/ban' && req.method === 'POST') {
+    const b = await req.json().catch(() => ({}));
+    if (!b.name) return json({ error: 'missing name' }, 400);
+    const target = await env.DB.prepare('SELECT * FROM music_users WHERE name = ?').bind(String(b.name)).first();
+    if (!target) return json({ error: 'no such guest' }, 404);
+    if ((target.role || 'guest') === 'host') return json({ error: 'cannot ban a host' }, 400);
+    await env.DB.prepare("UPDATE music_users SET banned_until = '9999-12-31T00:00:00.000Z' WHERE id = ?").bind(target.id).run();
+    await env.DB.prepare("UPDATE music_requests SET status = 'cancelled' WHERE user_id = ? AND status = 'queued'").bind(target.id).run();
+    return json({ ok: true });
+  }
 
   if (p === '/api/next' && req.method === 'GET') {
     const { order } = await queueOrder(env);

@@ -29,6 +29,7 @@ async function api(path, opts = {}) {
 
 const loggedIn = () => !!localStorage.getItem('jm-token');
 const myName = () => localStorage.getItem('jm-name') || '';
+const isHost = () => localStorage.getItem('jm-role') === 'host';
 
 /* ---------- views ---------- */
 
@@ -86,9 +87,11 @@ function vQueue(d) {
   const np = d.now_playing;
   const banned = d.me.banned_until;
   return `
-  ${banned ? `<div class="banbox"><b>⛔ Cooling off.</b> You fired off too many requests — you're on a
+  ${banned ? (new Date(banned).getFullYear() > 9000
+    ? `<div class="banbox"><b>⛔ Banned.</b> The host has cut you off from requests. Go plead your case in person.</div>`
+    : `<div class="banbox"><b>⛔ Cooling off.</b> You fired off too many requests — you're on a
      20-minute timeout and your spot moved to the back of the line.
-     <span class="muted small">Back at ${new Date(banned).toLocaleTimeString()}.</span></div>` : ''}
+     <span class="muted small">Back at ${new Date(banned).toLocaleTimeString()}.</span></div>`) : ''}
   <h2>Now playing</h2>
   ${np ? `<div class="card nowplaying">
       ${art(np.track)}
@@ -110,13 +113,16 @@ function vQueue(d) {
         <div class="tname">${esc(o.track.name)}</div>
         <div class="tmeta">${trackMeta(o.track)} — <b>${esc(o.user_name)}</b></div>
       </div>
-      ${o.mine ? `<button class="btn btn-ghost btn-sm" data-action="cancel" data-id="${o.id}">✕</button>` : ''}
+      ${o.mine ? `<button class="btn btn-ghost btn-sm" data-action="cancel" data-id="${o.id}">✕</button>`
+        : (isHost() ? `<button class="btn btn-ghost btn-sm" title="remove (host)" data-action="admin-del" data-id="${o.id}">🎛✕</button>` : '')}
     </div>`).join('')
     : `<div class="empty">Queue's empty — autoplay keeps the tunes going, but your pick beats the robot's. 🤖</div>`}
   <h2>Plays so far</h2>
   <div class="statchips">
     ${d.users.length ? d.users.map(u =>
-      `<span class="pchip">${esc(u.name)} <b>${u.played}</b>${u.banned ? ' ⛔' : ''}</span>`).join('')
+      `<span class="pchip">${esc(u.name)} <b>${u.played}</b>${u.banned ? ' ⛔' : ''}${u.role === 'host' ? ' 🎛' : ''}
+       ${u.banned && isHost() ? `<button class="btn btn-ghost btn-sm" data-action="unban" data-name="${esc(u.name)}">unban</button>` : ''}
+       ${!u.banned && u.role !== 'host' && isHost() ? `<button class="btn btn-ghost btn-sm" title="permanently ban" data-action="ban" data-name="${esc(u.name)}">ban</button>` : ''}</span>`).join('')
       : '<span class="muted small">No plays yet.</span>'}
   </div>`;
 }
@@ -159,7 +165,7 @@ function nav() {
   $('#nav').innerHTML = loggedIn() ? `
     <a href="#/search" class="${r === 'search' ? 'on' : ''}">Search</a>
     <a href="#/queue" class="${r === 'queue' ? 'on' : ''}">Queue</a>
-    <a href="#/player" class="${r === 'player' ? 'on' : ''}">Player</a>
+    ${isHost() ? `<a href="#/player" class="${r === 'player' ? 'on' : ''}">🎛 Admin</a>` : ''}
     <a href="#/login" data-action="logout" title="${esc(myName())}">↩</a>` : '';
 }
 
@@ -185,6 +191,7 @@ async function render() {
     return;
   }
   if (r === 'player') {
+    if (!isHost()) { app.innerHTML = '<div class="empty">🎛 Hosts only. Log in with the host password to run the show.</div>'; return; }
     app.innerHTML = vPlayer();
     Player.init();
     return;
@@ -334,10 +341,12 @@ document.addEventListener('click', async (e) => {
       const d = await api('/api/join', { method: 'POST', body: JSON.stringify({ name, password: pass }) });
       localStorage.setItem('jm-token', d.token);
       localStorage.setItem('jm-name', d.user.name);
-      toast(`Welcome, <b>${esc(d.user.name)}</b>! 🎶`);
-      location.hash = '#/search';
+      localStorage.setItem('jm-role', d.user.role || 'guest');
+      toast(d.user.role === 'host' ? `🎛 Host console unlocked — welcome, <b>${esc(d.user.name)}</b>!`
+        : `Welcome, <b>${esc(d.user.name)}</b>! 🎶`);
+      location.hash = d.user.role === 'host' ? '#/player' : '#/search';
     }
-    if (act === 'logout') { localStorage.removeItem('jm-token'); }
+    if (act === 'logout') { localStorage.removeItem('jm-token'); localStorage.removeItem('jm-role'); }
     if (act === 'req') {
       const tracks = JSON.parse($('#results').dataset.tracks || '[]');
       const t = tracks[Number(el.dataset.i)];
@@ -349,6 +358,22 @@ document.addEventListener('click', async (e) => {
     if (act === 'cancel') {
       await api('/api/request/' + el.dataset.id, { method: 'DELETE' });
       toast('Request cancelled.');
+      render();
+    }
+    if (act === 'admin-del') {
+      await api('/api/admin/request/' + el.dataset.id, { method: 'DELETE' });
+      toast('Request removed. 🎛');
+      render();
+    }
+    if (act === 'unban') {
+      await api('/api/admin/unban', { method: 'POST', body: JSON.stringify({ name: el.dataset.name }) });
+      toast(`${esc(el.dataset.name)} unbanned and restored in the rotation. 🎛`);
+      render();
+    }
+    if (act === 'ban') {
+      if (!confirm(`Permanently ban ${el.dataset.name} from requesting? Their queued songs are removed too.`)) return;
+      await api('/api/admin/ban', { method: 'POST', body: JSON.stringify({ name: el.dataset.name }) });
+      toast(`${esc(el.dataset.name)} is permanently banned. ⛔`);
       render();
     }
     if (act === 'save-setup') {
@@ -367,7 +392,9 @@ document.addEventListener('click', async (e) => {
     if (act === 'p-skip') Player.skip();
   } catch (err) {
     if (err.status === 429 && err.data && err.data.banned_until) {
-      toast(`⛔ ${esc(err.message)}<br><span class="small">You can request again at ${new Date(err.data.banned_until).toLocaleTimeString()}.</span>`, 'error');
+      const perma = new Date(err.data.banned_until).getFullYear() > 9000;
+      toast(perma ? '⛔ The host has banned you from requesting.'
+        : `⛔ ${esc(err.message)}<br><span class="small">You can request again at ${new Date(err.data.banned_until).toLocaleTimeString()}.</span>`, 'error');
       if (location.hash.includes('queue')) render();
     } else {
       toast(esc(err.message), 'error');
