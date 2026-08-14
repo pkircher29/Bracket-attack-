@@ -29,6 +29,10 @@ medal table. Random teams get junkyard-grade names like *Rusty Hubcaps* and
   🎮 badge, and when you start a match whose players are busy in another
   tournament, the app **automatically substitutes a free team from the same
   leg of the bracket** and tells you what it did.
+- **Multi-device live sync** — every phone or tablet that opens the site and
+  joins the same **room code** shares one live scoreboard. Different devices
+  can score different matches at the same time (even in the same tournament);
+  changes merge automatically and show up everywhere within a few seconds.
 - **Confetti.** Obviously.
 - Export/import your data as a JSON backup.
 
@@ -42,9 +46,20 @@ It's a zero-build static web app — no server, no dependencies.
   branch → `main` / root** — your app goes live at
   `https://<user>.github.io/Bracket-attack-/`.
 
-All data is saved in the browser's local storage on the device you score from
-(use one phone/tablet as the official scoreboard). Use *Export backup* on the
-overview page to move data between devices.
+## Multi-device sync
+
+Sync is on by default, in room **`junkyard`**. Every device that opens the
+site and joins the same room (Live Sync card on the overview page) shares one
+scoreboard. The green dot in the top bar means you're live.
+
+- Keep **one scorekeeper per match** — everything else (different matches,
+  different tournaments, players, teams) merges automatically.
+- Data also stays in each device's local storage, so a device that drops off
+  WiFi keeps working and re-merges when it reconnects.
+
+The backend is a ~60-line Cloudflare Worker + D1 database (free tier), source
+in [`worker/worker.js`](worker/worker.js), deployed at
+`bracket-attack-sync.pkircher.workers.dev`.
 
 ## How a game day works
 

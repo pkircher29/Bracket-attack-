@@ -173,10 +173,12 @@
       case 'start-match': startMatch(el.dataset.mid); break;
       case 'finish-match': finishMatch(); break;
       case 'score-add': {
+        const t = currentTournament();
         const m = currentMatch();
-        if (!m || m.status !== 'live') break;
+        if (!t || !m || m.status !== 'live') break;
         const key = el.dataset.side === 'A' ? 'scoreA' : 'scoreB';
         m[key] = Math.max(0, m[key] + Number(el.dataset.n));
+        Bracket.touchMatch(t, m);
         Store.save();
         render();
         break;
@@ -202,10 +204,26 @@
       }
       case 'reset-all': {
         if (confirm('Wipe ALL players, teams and tournaments?') &&
-            confirm('Really sure? There is no undo.')) {
+            confirm('Really sure? There is no undo — this clears every synced device too.')) {
           Store.resetAll();
           render();
         }
+        break;
+      }
+
+      /* live sync */
+      case 'sync-join': {
+        const val = $('#sync-room').value;
+        if (val.trim()) {
+          Sync.setRoom(val);
+          toast(`Joined room <b>${esc(Sync.room)}</b>.`, 'ok');
+          render();
+        }
+        break;
+      }
+      case 'sync-toggle': {
+        Sync.setEnabled(!Sync.enabled);
+        render();
         break;
       }
     }
@@ -242,6 +260,16 @@
       d[field] = el.value;
     }
   });
+
+  // Sync calls this when remote changes arrive. Skip the redraw while the
+  // user is typing so the refresh doesn't steal their input focus.
+  window.App = {
+    rerender() {
+      const a = document.activeElement;
+      if (a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName)) return;
+      render();
+    },
+  };
 
   addEventListener('hashchange', render);
   render();

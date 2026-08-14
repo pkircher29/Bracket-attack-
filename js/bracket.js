@@ -4,6 +4,8 @@
 
 const Bracket = (() => {
 
+  const now = () => new Date().toISOString();
+
   function nextPow2(n) {
     let p = 1;
     while (p < n) p *= 2;
@@ -23,6 +25,7 @@ const Bracket = (() => {
       teamSize,
       status: 'active',
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       teams: teams.map(team => ({
         id: uid('tm'),
         name: team.name,
@@ -70,6 +73,7 @@ const Bracket = (() => {
           bye: false,
           isFinal: r === R && i === 0,
           isThird: false,
+          updatedAt: now(),
         });
       }
     }
@@ -79,6 +83,7 @@ const Bracket = (() => {
         teamA: null, teamB: null, scoreA: 0, scoreB: 0,
         status: 'pending', winner: null, bye: false,
         isFinal: false, isThird: true, skipped: false,
+        updatedAt: now(),
       });
     }
     t.matches = matches;
@@ -106,6 +111,7 @@ const Bracket = (() => {
     if (next) {
       if (m.idx % 2 === 0) next.teamA = m.winner;
       else next.teamB = m.winner;
+      next.updatedAt = now();
     }
     if (t.rounds >= 2 && m.round === t.rounds - 1) maybeSetupThird(t);
   }
@@ -126,6 +132,7 @@ const Bracket = (() => {
       third.status = 'done';
       third.skipped = true;
     }
+    third.updatedAt = now();
   }
 
   function isReady(m) {
@@ -194,9 +201,12 @@ const Bracket = (() => {
       const mm = t.matches.find(x => x.id === s.matchId);
       mm[s.side] = s.outId;
       m[s.mSide] = s.inId;
+      mm.updatedAt = now();
     }
     m.status = 'live';
     m.startedAt = new Date().toISOString();
+    m.updatedAt = now();
+    t.updatedAt = now();
     Store.save();
   }
 
@@ -206,9 +216,17 @@ const Bracket = (() => {
     m.status = 'done';
     m.winner = winnerId;
     m.endedAt = new Date().toISOString();
+    m.updatedAt = now();
     feedWinner(t, m);
     checkComplete(t);
+    t.updatedAt = now();
     Store.save();
+  }
+
+  // Record score taps with a timestamp so per-match merge works.
+  function touchMatch(t, m) {
+    m.updatedAt = now();
+    t.updatedAt = now();
   }
 
   function checkComplete(t) {
@@ -225,6 +243,46 @@ const Bracket = (() => {
     };
   }
 
+  /* ---------- sync support ----------
+     Merge two replicas of the same tournament: newest metadata wins,
+     matches merge individually by updatedAt, then the bracket is
+     reconciled so winners from one device feed matches on another. */
+
+  function mergeTournaments(local, remote) {
+    const base = ((remote.updatedAt || '') > (local.updatedAt || '')) ? remote : local;
+    const other = base === local ? remote : local;
+    const t = JSON.parse(JSON.stringify(base));
+    const otherById = new Map((other.matches || []).map(m => [m.id, m]));
+    t.matches = t.matches.map(m => {
+      const o = otherById.get(m.id);
+      return (o && (o.updatedAt || '') > (m.updatedAt || ''))
+        ? JSON.parse(JSON.stringify(o)) : m;
+    });
+    reconcile(t);
+    return t;
+  }
+
+  /* Re-derive cross-match state after a merge. Only fills empty slots —
+     never overwrites — so substitution swaps survive. */
+  function reconcile(t) {
+    for (const m of t.matches) {
+      if (m.isThird || m.isFinal || m.status !== 'done' || !m.winner) continue;
+      const next = t.matches.find(x =>
+        !x.isThird && x.round === m.round + 1 && x.idx === (m.idx >> 1));
+      if (next && next.status === 'pending') {
+        const side = m.idx % 2 === 0 ? 'teamA' : 'teamB';
+        if (!next[side]) next[side] = m.winner;
+      }
+    }
+    if (t.rounds >= 2) {
+      const third = t.matches.find(x => x.isThird);
+      if (third && third.status === 'pending' && !third.teamA && !third.teamB) {
+        maybeSetupThird(t);
+      }
+    }
+    if (t.status !== 'complete') checkComplete(t);
+  }
+
   function progress(t) {
     const real = t.matches.filter(m => !m.bye && !m.skipped);
     const done = real.filter(m => m.status === 'done').length;
@@ -238,5 +296,6 @@ const Bracket = (() => {
     return `Round ${r}`;
   }
 
-  return { createTournament, isReady, planStart, applyStart, finishMatch, progress, roundName, loserOf };
+  return { createTournament, isReady, planStart, applyStart, finishMatch, touchMatch,
+           mergeTournaments, reconcile, progress, roundName, loserOf };
 })();

@@ -122,6 +122,16 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px 18px 80px; }
 
 .badge-live { font-size: .8rem; margin-left: 4px; }
 
+/* live-sync status dot in the top bar */
+.sync-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #5c5348; margin-right: 6px; flex: none;
+}
+.sync-live { background: var(--ok); box-shadow: 0 0 8px rgba(6, 214, 160, .6); }
+.sync-error { background: var(--live); }
+.sync-connecting { background: var(--gold); animation: pulse 1.2s infinite; }
+.sync-off { background: #5c5348; }
+
 /* ---------- hero / stats ---------- */
 
 .hero { text-align: center; padding: 34px 0 8px; }
