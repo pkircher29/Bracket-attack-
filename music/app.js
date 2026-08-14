@@ -81,9 +81,17 @@ function art(t, cls = '') {
   return t.art ? `<img src="${esc(t.art)}" alt="" loading="lazy">` : `<div class="noart ${cls}">🎵</div>`;
 }
 
+function artistLinks(artists) {
+  return (artists || []).map(a => a.id
+    ? `<a class="mlink" href="#/artist/${esc(a.id)}/${encodeURIComponent(a.name)}">${esc(a.name)}</a>`
+    : esc(a.name)).join(', ');
+}
+
 function trackMeta(t) {
-  const artists = (t.artists || []).map(a => a.name).join(', ');
-  return `${esc(artists)} · ${esc(t.album)}${t.year ? ` · ${esc(t.year)}` : ''}`;
+  const album = t.album_id
+    ? `<a class="mlink" href="#/album/${esc(t.album_id)}">${esc(t.album)}</a>`
+    : esc(t.album);
+  return `${artistLinks(t.artists)} · ${album}${t.year ? ` · ${esc(t.year)}` : ''}`;
 }
 
 function vLogin() {
@@ -104,6 +112,42 @@ function vSearch() {
   <h2>Request a song</h2>
   <input id="q" placeholder="Search songs, artists, albums…" autocomplete="off">
   <div id="results" style="margin-top:14px"><div class="empty">Type to search Spotify. 🔍</div></div>`;
+}
+
+const reqBtn = i => `<button class="btn btn-accent btn-sm" data-action="req" data-i="${i}">＋ Request</button>`;
+
+function vAlbum(d) {
+  const a = d.album;
+  return `
+  <a class="mlink small" href="#" data-action="back">← Back</a>
+  <div class="card nowplaying" style="margin-top:10px">
+    ${art(a)}
+    <div class="tinfo">
+      <div class="tname">${esc(a.name)}</div>
+      <div class="tmeta">${artistLinks(a.artists)}${a.year ? ` · ${esc(a.year)}` : ''} · ${a.total_tracks} tracks</div>
+    </div>
+  </div>
+  <h2 style="margin-top:18px">Tracks</h2>
+  <div id="results">${d.tracks.map((t, i) => trackRow(t, reqBtn(i))).join('')}</div>`;
+}
+
+function vArtist(d) {
+  return `
+  <a class="mlink small" href="#" data-action="back">← Back</a>
+  <h2 style="margin-top:10px">${esc(d.artist.name)}</h2>
+  <h2>Popular tracks</h2>
+  <div id="results">${d.tracks.length
+    ? d.tracks.map((t, i) => trackRow(t, reqBtn(i))).join('')
+    : '<div class="empty">No tracks found.</div>'}</div>
+  <h2>Albums & singles</h2>
+  ${d.albums.length ? `<div class="albumgrid">
+    ${d.albums.map(al => `
+    <a class="albumcard" href="#/album/${esc(al.id)}">
+      ${art(al)}
+      <div class="aname">${esc(al.name)}</div>
+      <div class="muted small">${esc(al.year)}${al.total_tracks > 1 ? ` · ${al.total_tracks} tracks` : ''}</div>
+    </a>`).join('')}
+  </div>` : '<div class="empty">No albums found.</div>'}`;
 }
 
 function trackRow(t, action) {
@@ -241,6 +285,28 @@ async function render() {
     Player.init();
     return;
   }
+  if (r.startsWith('album/')) {
+    const id = r.split('/')[1] || '';
+    app.innerHTML = '<div class="empty">Loading album… 💿</div>';
+    try {
+      const d = await api('/api/album?id=' + encodeURIComponent(id));
+      app.innerHTML = vAlbum(d);
+      $('#results').dataset.tracks = JSON.stringify(d.tracks);
+    } catch (e) { app.innerHTML = `<div class="empty">Couldn't load that album: ${esc(e.message)}</div>`; }
+    return;
+  }
+  if (r.startsWith('artist/')) {
+    const seg = r.split('/');
+    const id = seg[1] || '';
+    const name = decodeURIComponent(seg.slice(2).join('/') || '');
+    app.innerHTML = '<div class="empty">Loading artist… 🎤</div>';
+    try {
+      const d = await api('/api/artist?id=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name));
+      app.innerHTML = vArtist(d);
+      $('#results').dataset.tracks = JSON.stringify(d.tracks);
+    } catch (e) { app.innerHTML = `<div class="empty">Couldn't load that artist: ${esc(e.message)}</div>`; }
+    return;
+  }
   app.innerHTML = vSearch();
   const q = $('#q');
   let t = null;
@@ -269,7 +335,7 @@ async function doSearch() {
 /* ---------- host player ---------- */
 
 const Player = (() => {
-  let player = null, deviceId = null, current = null, advancing = false;
+  let player = null, deviceId = null, current = null, advancing = false, kicked = false;
 
   function box() { return $('#playerbox'); }
 
@@ -354,6 +420,20 @@ const Player = (() => {
       if (!res.ok && res.status !== 204) throw new Error('Spotify play failed (' + res.status + ')');
       current = { track, trackId: track.id, source: n.source, userName: n.user_name };
       await api('/api/played', { method: 'POST', body: JSON.stringify(n.source === 'request' ? { request_id: n.request_id } : { track }) });
+      if (!kicked) {
+        // SDK quirk: the first play on a fresh device can report "playing"
+        // while sitting silent at 0:00 — a pause/resume over the Web API
+        // unsticks it. Only needed once per page load.
+        kicked = true;
+        await new Promise(r => setTimeout(r, 800));
+        const st = player && await player.getCurrentState();
+        if (!st || st.position === 0) {
+          const H = { Authorization: 'Bearer ' + tok };
+          await fetch('https://api.spotify.com/v1/me/player/pause', { method: 'PUT', headers: H });
+          await new Promise(r => setTimeout(r, 300));
+          await fetch('https://api.spotify.com/v1/me/player/play', { method: 'PUT', headers: H });
+        }
+      }
       ui('Playing.');
     } catch (e) {
       ui('Play error: ' + e.message);
@@ -393,6 +473,7 @@ document.addEventListener('click', async (e) => {
       location.hash = d.user.role === 'host' ? '#/player' : '#/search';
     }
     if (act === 'logout') { localStorage.removeItem('jm-token'); localStorage.removeItem('jm-role'); clearSharedCookie(); }
+    if (act === 'back') { e.preventDefault(); history.length > 1 ? history.back() : (location.hash = '#/search'); }
     if (act === 'req') {
       const tracks = JSON.parse($('#results').dataset.tracks || '[]');
       const t = tracks[Number(el.dataset.i)];

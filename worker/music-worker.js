@@ -119,10 +119,21 @@ function slimTrack(t) {
     id: t.id, uri: t.uri, name: t.name,
     artists: (t.artists || []).map(a => ({ id: a.id, name: a.name })),
     album: (t.album && t.album.name) || '',
+    album_id: (t.album && t.album.id) || '',
     year: ((t.album && t.album.release_date) || '').slice(0, 4),
     popularity: t.popularity ?? 0,
     art: (t.album && t.album.images && (t.album.images[1] || t.album.images[0]) || {}).url || '',
     duration_ms: t.duration_ms || 0,
+  };
+}
+
+function slimAlbum(a) {
+  return {
+    id: a.id, name: a.name,
+    artists: (a.artists || []).map(x => ({ id: x.id, name: x.name })),
+    year: (a.release_date || '').slice(0, 4),
+    art: ((a.images && (a.images[1] || a.images[0])) || {}).url || '',
+    total_tracks: a.total_tracks || 0,
   };
 }
 
@@ -316,6 +327,63 @@ async function api(req, env, url, p) {
       return json({ error: msg, spotify_status: res.status }, 502);
     }
     return json({ tracks: (d.tracks.items || []).map(slimTrack) });
+  }
+
+  /* ----- album & artist browsing ----- */
+
+  // Full track list for one album. GET /v1/albums/{id} is not restricted for
+  // dev-mode apps and inlines up to 50 tracks.
+  if (p === '/api/album' && req.method === 'GET') {
+    const id = url.searchParams.get('id') || '';
+    if (!/^[A-Za-z0-9]+$/.test(id)) return json({ error: 'bad album id' }, 400);
+    const tok = (await hostToken(env, c)) || (await clientToken(env, c));
+    const res = await fetch(`${apiBase(c)}/v1/albums/${id}?market=US`,
+      { headers: { Authorization: 'Bearer ' + tok } });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.id) {
+      const msg = (d.error && d.error.message) || `Spotify album lookup failed (HTTP ${res.status})`;
+      return json({ error: msg, spotify_status: res.status }, 502);
+    }
+    const album = slimAlbum(d);
+    let items = (d.tracks && d.tracks.items) || [];
+    if ((d.tracks && d.tracks.total) > items.length) {
+      const more = await (await fetch(`${apiBase(c)}/v1/albums/${id}/tracks?limit=50&offset=50&market=US`,
+        { headers: { Authorization: 'Bearer ' + tok } })).json();
+      items = items.concat(more.items || []);
+    }
+    // album track objects are "simple" (no album/popularity) — fill in from the album
+    const tracks = items.map(t => ({
+      ...slimTrack(t), album: album.name, album_id: album.id, year: album.year, art: album.art,
+    }));
+    return json({ album, tracks });
+  }
+
+  // An artist's popular tracks + catalog. /v1/artists/{id}/top-tracks and
+  // /albums are blocked for dev-mode apps, but filtered search works and
+  // paginates, so build the catalog from artist:"name" queries.
+  if (p === '/api/artist' && req.method === 'GET') {
+    const id = url.searchParams.get('id') || '';
+    const name = (url.searchParams.get('name') || '').slice(0, 100);
+    if (!/^[A-Za-z0-9]+$/.test(id) || !name) return json({ error: 'bad artist id/name' }, 400);
+    const tok = (await hostToken(env, c)) || (await clientToken(env, c));
+    const H = { Authorization: 'Bearer ' + tok };
+    const search = async (type, offset) => {
+      const r = await fetch(`${apiBase(c)}/v1/search?` + new URLSearchParams({
+        q: `artist:"${name.replace(/"/g, '')}"`, type, limit: '10', offset: String(offset), market: 'US',
+      }), { headers: H });
+      const d = await r.json().catch(() => ({}));
+      return (d[type + 's'] && d[type + 's'].items) || [];
+    };
+    const [topTracks, ...albumPages] = await Promise.all([
+      search('track', 0), search('album', 0), search('album', 10), search('album', 20),
+    ]);
+    const mine = x => (x.artists || []).some(a => a.id === id);
+    const seen = new Set();
+    const albums = albumPages.flat().filter(mine).filter(a => !seen.has(a.id) && seen.add(a.id))
+      .map(slimAlbum).sort((a, b) => (b.year || '') < (a.year || '') ? -1 : 1);
+    const tracks = topTracks.filter(mine).map(slimTrack)
+      .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    return json({ artist: { id, name }, tracks, albums });
   }
 
   /* ----- requests ----- */
