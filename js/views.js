@@ -1,0 +1,411 @@
+/* Bracket Attack — view rendering */
+'use strict';
+
+const Views = (() => {
+
+  /* =============== shared bits =============== */
+
+  function statusChip(t) {
+    if (t.status === 'complete') return `<span class="chip chip-done">🏁 Complete</span>`;
+    const live = t.matches.some(m => m.status === 'live');
+    return live
+      ? `<span class="chip chip-live"><span class="pulse"></span>LIVE</span>`
+      : `<span class="chip chip-active">Active</span>`;
+  }
+
+  function rosterNames(team) {
+    return team.playerIds.map(Store.playerName).join(' · ');
+  }
+
+  function rulesChips(t) {
+    const r = t.rules;
+    return `
+      <span class="chip chip-rule">🎯 First to ${r.target}</span>
+      ${r.winBy ? `<span class="chip chip-rule">win by ${r.winBy}</span>` : ''}
+      <span class="chip chip-rule">${t.teamSize} player${t.teamSize > 1 ? 's' : ''}/team</span>`;
+  }
+
+  /* =============== overview =============== */
+
+  function overview() {
+    const s = Store.state;
+    const liveMatches = s.tournaments.flatMap(t => t.matches.filter(m => m.status === 'live'));
+    const active = s.tournaments.filter(t => t.status === 'active');
+    const complete = s.tournaments.filter(t => t.status === 'complete');
+    const busy = Store.busyPlayers();
+
+    const cards = s.tournaments.map(t => {
+      const p = Bracket.progress(t);
+      const pct = p.total ? Math.round(p.done / p.total * 100) : 0;
+      const champ = t.status === 'complete'
+        ? `<div class="card-champ">🥇 ${esc(Store.teamName(t, t.placements.first))}</div>` : '';
+      return `
+      <a class="tcard" href="#/t/${t.id}">
+        <div class="tcard-top">
+          <span class="tcard-icon">${t.icon}</span>
+          ${statusChip(t)}
+        </div>
+        <h3>${esc(t.name)}</h3>
+        <div class="muted">${esc(t.game)} · ${t.teams.length} teams</div>
+        ${champ}
+        <div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
+        <div class="muted small">${p.done}/${p.total} matches played</div>
+      </a>`;
+    }).join('');
+
+    const lb = Store.leaderboard();
+    const medals = ['🥇', '🥈', '🥉'];
+    const lbRows = lb.map((r, i) => `
+      <tr class="${i < 3 ? 'podium-' + (i + 1) : ''}">
+        <td class="rank">${i < 3 ? medals[i] : i + 1}</td>
+        <td>${esc(r.name)} ${busy.has(r.id) ? '<span class="badge-live" title="currently playing">🎮</span>' : ''}</td>
+        <td class="pts">${r.points}</td>
+        <td>${r.played}</td>
+        <td>${r.wins}</td>
+        <td>${r.podiums}</td>
+      </tr>`).join('');
+
+    return `
+    <section class="hero">
+      <div class="hero-stripe"></div>
+      <h1>Junkyard <em>Olympics</em></h1>
+      <p class="muted">The tournament of tournaments. Scrap for glory. 🔧</p>
+      <div class="stats">
+        <div class="stat"><b>${liveMatches.length}</b><span>live matches</span></div>
+        <div class="stat"><b>${active.length}</b><span>active tournaments</span></div>
+        <div class="stat"><b>${s.players.length}</b><span>players</span></div>
+        <div class="stat"><b>${complete.length}</b><span>completed</span></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-head">
+        <h2>Tournaments</h2>
+        <a class="btn btn-accent" href="#/new">+ New Tournament</a>
+      </div>
+      ${s.tournaments.length
+        ? `<div class="tgrid">${cards}</div>`
+        : `<div class="empty">No events yet. Add some <a href="#/players">athletes</a>, then fire up your first bracket. 🌽🐴🔩</div>`}
+    </section>
+
+    <section>
+      <div class="sec-head"><h2>Medal Table</h2>
+        <span class="muted small">1st = 4 pts · 2nd = 3 · 3rd = 2 · played = 1</span></div>
+      ${lb.length ? `
+      <div class="tablewrap"><table class="lb">
+        <thead><tr><th></th><th>Player</th><th>Points</th><th>Played</th><th>Titles</th><th>Podiums</th></tr></thead>
+        <tbody>${lbRows}</tbody>
+      </table></div>`
+      : `<div class="empty">Standings appear once a tournament finishes.</div>`}
+    </section>
+
+    <section class="datatools">
+      <button class="btn btn-ghost btn-sm" data-action="export-data">⬇ Export backup</button>
+      <label class="btn btn-ghost btn-sm">⬆ Import backup<input type="file" id="import-file" accept=".json" hidden></label>
+      <button class="btn btn-danger btn-sm" data-action="reset-all">Reset everything</button>
+    </section>`;
+  }
+
+  /* =============== players & teams =============== */
+
+  function players() {
+    const s = Store.state;
+    const busy = Store.busyPlayers();
+
+    const chips = s.players.map(p => `
+      <span class="pchip">
+        ${esc(p.name)}
+        ${busy.has(p.id) ? `<span class="badge-live" title="playing in ${esc(busy.get(p.id).tournament.name)}">🎮</span>` : ''}
+        <button class="x" data-action="remove-player" data-id="${p.id}" title="remove">×</button>
+      </span>`).join('');
+
+    const teamCards = s.staticTeams.map(t => `
+      <div class="card teamcard">
+        <div class="sec-head"><h3>${esc(t.name)}</h3>
+          <button class="btn btn-ghost btn-sm" data-action="remove-team" data-id="${t.id}">Delete</button></div>
+        <div class="muted">${t.playerIds.map(Store.playerName).map(esc).join(' · ')}</div>
+      </div>`).join('');
+
+    const boxes = s.players.map(p => `
+      <label class="check"><input type="checkbox" class="team-pick" value="${p.id}"> ${esc(p.name)}</label>`).join('');
+
+    return `
+    <section>
+      <div class="sec-head"><h2>Player Pool</h2><span class="muted small">${s.players.length} players</span></div>
+      <div class="card">
+        <div class="addrow">
+          <input id="new-players" placeholder="Add names — comma or newline separated (e.g. Pat, Sam, Alex)">
+          <button class="btn btn-accent" data-action="add-players">Add</button>
+        </div>
+        <div class="chips">${chips || '<span class="muted">No players yet — add the whole crew above.</span>'}</div>
+        <p class="muted small">🎮 = currently in a live match somewhere.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-head"><h2>Static Teams</h2>
+        <span class="muted small">Fixed rosters available in every tournament</span></div>
+      <div class="card">
+        <div class="addrow">
+          <input id="team-name" placeholder="Team name (e.g. The Ringers)">
+          <button class="btn btn-accent" data-action="create-team">Create team</button>
+        </div>
+        <div class="checkgrid">${boxes || '<span class="muted">Add players first.</span>'}</div>
+      </div>
+      <div class="teamgrid">${teamCards}</div>
+    </section>`;
+  }
+
+  /* =============== new tournament =============== */
+
+  let draft = null;
+
+  function newDraft() {
+    const g = GAME_PRESETS[0];
+    return {
+      name: '', gameIdx: 0, customGame: '',
+      target: g.target, winBy: g.winBy, notes: g.notes,
+      teamSize: 2, staticIds: new Set(), randomTeams: [], bench: [],
+    };
+  }
+
+  function resetDraft() { draft = newDraft(); }
+  function getDraft() { if (!draft) draft = newDraft(); return draft; }
+
+  function shuffleDraftTeams() {
+    const d = getDraft();
+    const taken = new Set();
+    for (const id of d.staticIds) {
+      const st = Store.state.staticTeams.find(t => t.id === id);
+      if (st) st.playerIds.forEach(p => taken.add(p));
+    }
+    const free = shuffle(Store.state.players.filter(p => !taken.has(p.id)).map(p => p.id));
+    const groups = chunk(free, d.teamSize);
+    const full = groups.filter(g => g.length === d.teamSize);
+    const leftover = groups.filter(g => g.length < d.teamSize).flat();
+    const used = new Set();
+    d.randomTeams = full.map(g => ({ name: randomTeamName(used), playerIds: g, kind: 'random' }));
+    d.bench = leftover;
+  }
+
+  function draftTeamCount() {
+    return getDraft().staticIds.size + getDraft().randomTeams.length;
+  }
+
+  function newTournament() {
+    const d = getDraft();
+    const s = Store.state;
+
+    const gameBtns = GAME_PRESETS.map((g, i) => `
+      <button class="gbtn ${i === d.gameIdx ? 'on' : ''}" data-action="draft-game" data-i="${i}">
+        <span>${g.icon}</span>${g.name}</button>`).join('');
+
+    const staticBoxes = s.staticTeams.map(t => `
+      <label class="check">
+        <input type="checkbox" data-action="draft-static" data-id="${t.id}" ${d.staticIds.has(t.id) ? 'checked' : ''}>
+        <b>${esc(t.name)}</b> <span class="muted small">(${t.playerIds.map(Store.playerName).map(esc).join(', ')})</span>
+      </label>`).join('');
+
+    const preview = d.randomTeams.map(t => `
+      <div class="rteam"><b>${esc(t.name)}</b><span class="muted small">${t.playerIds.map(Store.playerName).map(esc).join(' · ')}</span></div>`).join('');
+
+    return `
+    <section>
+      <h2>New Tournament</h2>
+      <div class="card form">
+
+        <label class="f">Tournament name
+          <input id="d-name" data-field="name" value="${esc(d.name)}" placeholder="Friday Night Cornhole"></label>
+
+        <label class="f">Game</label>
+        <div class="gamerow">${gameBtns}</div>
+        ${d.gameIdx === GAME_PRESETS.length - 1
+          ? `<label class="f">Custom game name
+              <input data-field="customGame" value="${esc(d.customGame)}" placeholder="Bocce, KanJam, ..."></label>` : ''}
+
+        <fieldset class="f-rules">
+          <legend>Scoring rules <span class="muted small">(locked in when the tournament begins)</span></legend>
+          <div class="rulesrow">
+            <label class="f">Play to <input type="number" min="1" data-field="target" value="${d.target}"></label>
+            <label class="f">Win by <input type="number" min="0" max="5" data-field="winBy" value="${d.winBy}"></label>
+            <label class="f">Team size
+              <select data-field="teamSize">
+                ${[1, 2, 3, 4].map(n => `<option value="${n}" ${d.teamSize === n ? 'selected' : ''}>${n}v${n}</option>`).join('')}
+              </select></label>
+          </div>
+          <label class="f">House rules / notes
+            <textarea data-field="notes" rows="2" placeholder="Bust back to 15, cancellation scoring...">${esc(d.notes)}</textarea></label>
+        </fieldset>
+
+        <fieldset class="f-rules">
+          <legend>Teams</legend>
+          ${s.staticTeams.length ? `<p class="muted small">Include static teams:</p><div class="checkgrid">${staticBoxes}</div>` : ''}
+          <div class="sec-head" style="margin-top:12px">
+            <p class="muted small">Random teams drawn from the remaining player pool:</p>
+            <button class="btn btn-ghost btn-sm" data-action="draft-shuffle">🎲 ${d.randomTeams.length ? 'Reshuffle' : 'Draw teams'}</button>
+          </div>
+          <div class="rteams">${preview || '<span class="muted small">No random teams drawn yet.</span>'}</div>
+          ${d.bench.length ? `<p class="muted small">On the bench (not enough for a full team): ${d.bench.map(Store.playerName).map(esc).join(', ')}</p>` : ''}
+          <p class="draftcount ${draftTeamCount() >= 2 ? 'ok' : ''}">${draftTeamCount()} team${draftTeamCount() === 1 ? '' : 's'} entered</p>
+        </fieldset>
+
+        <button class="btn btn-accent btn-lg" data-action="draft-create">🚀 Start Tournament</button>
+      </div>
+    </section>`;
+  }
+
+  /* =============== tournament page =============== */
+
+  function matchCard(t, m) {
+    const row = (teamId, score, isWinner) => {
+      const team = Store.teamOf(t, teamId);
+      const label = team ? esc(team.name)
+        : (m.bye ? '<span class="muted">BYE</span>' : '<span class="muted">TBD</span>');
+      return `<div class="mrow ${isWinner ? 'won' : (m.status === 'done' && team ? 'lost' : '')}">
+        <span class="mname" ${team ? `title="${esc(rosterNames(team))}"` : ''}>${label}</span>
+        <span class="mscore">${m.status !== 'pending' && team ? score : ''}</span>
+      </div>`;
+    };
+    let action = '';
+    if (m.status === 'live') {
+      action = `<a class="btn btn-live btn-sm" href="#/m/${t.id}/${m.id}"><span class="pulse"></span>Score it</a>`;
+    } else if (Bracket.isReady(m) && t.status === 'active') {
+      action = `<button class="btn btn-accent btn-sm" data-action="start-match" data-mid="${m.id}">▶ Start</button>`;
+    }
+    return `
+    <div class="match ${m.status}" id="match-${m.id}">
+      ${row(m.teamA, m.scoreA, m.status === 'done' && m.winner === m.teamA)}
+      ${row(m.teamB, m.scoreB, m.status === 'done' && m.winner === m.teamB)}
+      ${action ? `<div class="mact">${action}</div>` : ''}
+    </div>`;
+  }
+
+  function tournamentPage(t) {
+    if (!t) return `<section><div class="empty">Tournament not found. <a href="#/">Back to overview</a>.</div></section>`;
+
+    const podium = t.status === 'complete' ? `
+      <div class="podium card">
+        <div class="pod pod-1">🥇<b>${esc(Store.teamName(t, t.placements.first))}</b><span>4 pts each</span></div>
+        ${t.placements.second ? `<div class="pod pod-2">🥈<b>${esc(Store.teamName(t, t.placements.second))}</b><span>3 pts each</span></div>` : ''}
+        ${t.placements.third ? `<div class="pod pod-3">🥉<b>${esc(Store.teamName(t, t.placements.third))}</b><span>2 pts each</span></div>` : ''}
+        <div class="pod pod-rest">🔩<b>Everyone else</b><span>1 pt each</span></div>
+      </div>` : '';
+
+    const live = t.matches.filter(m => m.status === 'live');
+    const ready = t.matches.filter(m => Bracket.isReady(m));
+    const queue = (t.status === 'active' && (live.length || ready.length)) ? `
+      <div class="queue">
+        ${live.map(m => `<div class="qitem qlive">
+            <span class="chip chip-live"><span class="pulse"></span>LIVE</span>
+            <b>${esc(Store.teamName(t, m.teamA))}</b> vs <b>${esc(Store.teamName(t, m.teamB))}</b>
+            <span class="muted small">${m.isThird ? '3rd place' : Bracket.roundName(t, m.round)}</span>
+            <a class="btn btn-live btn-sm" href="#/m/${t.id}/${m.id}">Score it</a>
+          </div>`).join('')}
+        ${ready.map(m => `<div class="qitem">
+            <span class="chip chip-active">UP NEXT</span>
+            <b>${esc(Store.teamName(t, m.teamA))}</b> vs <b>${esc(Store.teamName(t, m.teamB))}</b>
+            <span class="muted small">${m.isThird ? '3rd place' : Bracket.roundName(t, m.round)}</span>
+            <button class="btn btn-accent btn-sm" data-action="start-match" data-mid="${m.id}">▶ Start</button>
+          </div>`).join('')}
+      </div>` : '';
+
+    const cols = [];
+    for (let r = 1; r <= t.rounds; r++) {
+      const ms = t.matches.filter(m => m.round === r && !m.isThird);
+      cols.push(`<div class="round"><h4>${Bracket.roundName(t, r)}</h4>
+        <div class="roundcol">${ms.map(m => matchCard(t, m)).join('')}</div></div>`);
+    }
+    const third = t.matches.find(m => m.isThird);
+    if (third && !third.skipped) {
+      cols.push(`<div class="round"><h4>3rd Place</h4>
+        <div class="roundcol">${matchCard(t, third)}</div></div>`);
+    }
+
+    const teams = t.teams.map(team => `
+      <div class="card teamcard">
+        <div class="sec-head"><h3>${esc(team.name)}</h3>
+          <span class="chip ${team.kind === 'static' ? 'chip-static' : 'chip-random'}">${team.kind === 'static' ? '📌 static' : '🎲 random'}</span></div>
+        <div class="muted">${esc(rosterNames(team))}</div>
+      </div>`).join('');
+
+    return `
+    <section>
+      <a class="backlink" href="#/">← All tournaments</a>
+      <div class="thead">
+        <span class="thead-icon">${t.icon}</span>
+        <div>
+          <h1>${esc(t.name)}</h1>
+          <div class="chiprow">${statusChip(t)} <span class="chip chip-rule">${esc(t.game)}</span> ${rulesChips(t)}</div>
+          ${t.rules.notes ? `<p class="muted small">📋 ${esc(t.rules.notes)}</p>` : ''}
+        </div>
+      </div>
+      ${podium}
+      ${queue}
+      <h2>Bracket</h2>
+      <div class="bracket">${cols.join('')}</div>
+      <h2>Teams</h2>
+      <div class="teamgrid">${teams}</div>
+      <div class="datatools">
+        <button class="btn btn-danger btn-sm" data-action="del-tournament" data-id="${t.id}">Delete tournament</button>
+      </div>
+    </section>`;
+  }
+
+  /* =============== scorekeeping page =============== */
+
+  function scorePage(t, m) {
+    if (!t || !m) return `<section><div class="empty">Match not found. <a href="#/">Back</a>.</div></section>`;
+    const r = t.rules;
+    const teamA = Store.teamOf(t, m.teamA);
+    const teamB = Store.teamOf(t, m.teamB);
+
+    const panel = (team, side, score) => {
+      const atTarget = score >= r.target && (r.winBy === 0 || score - (side === 'A' ? m.scoreB : m.scoreA) >= r.winBy);
+      const isWinner = m.status === 'done' && m.winner === (side === 'A' ? m.teamA : m.teamB);
+      return `
+      <div class="spanel ${atTarget && m.status === 'live' ? 'at-target' : ''} ${isWinner ? 'winner' : ''}">
+        <h3>${esc(team ? team.name : 'TBD')}</h3>
+        <div class="sroster muted small">${team ? esc(rosterNames(team)) : ''}</div>
+        <div class="sscore">${score}</div>
+        ${m.status === 'live' ? `
+        <div class="sbtns">
+          <button class="btn btn-score" data-action="score-add" data-side="${side}" data-n="1">+1</button>
+          <button class="btn btn-score" data-action="score-add" data-side="${side}" data-n="2">+2</button>
+          <button class="btn btn-score" data-action="score-add" data-side="${side}" data-n="3">+3</button>
+          <button class="btn btn-ghost" data-action="score-add" data-side="${side}" data-n="-1">−1</button>
+        </div>` : ''}
+        ${isWinner ? '<div class="wintag">🏆 WINNER</div>' : ''}
+      </div>`;
+    };
+
+    return `
+    <section class="scorepage">
+      <a class="backlink" href="#/t/${t.id}">← ${esc(t.name)}</a>
+      <div class="scorehead">
+        <h2>${t.icon} ${m.isThird ? '3rd Place Match' : Bracket.roundName(t, m.round)}</h2>
+        <div class="chiprow">
+          <span class="chip chip-rule">🎯 First to ${r.target}${r.winBy ? `, win by ${r.winBy}` : ''}</span>
+          ${m.status === 'live' ? '<span class="chip chip-live"><span class="pulse"></span>LIVE</span>' : ''}
+          ${m.status === 'done' ? '<span class="chip chip-done">Final</span>' : ''}
+        </div>
+        ${r.notes ? `<p class="muted small">📋 ${esc(r.notes)}</p>` : ''}
+      </div>
+      <div class="scoreboard">
+        ${panel(teamA, 'A', m.scoreA)}
+        <div class="vs">VS</div>
+        ${panel(teamB, 'B', m.scoreB)}
+      </div>
+      <div class="scoreactions">
+        ${m.status === 'pending' && Bracket.isReady(m)
+          ? `<button class="btn btn-accent btn-lg" data-action="start-match" data-mid="${m.id}">▶ Start match</button>` : ''}
+        ${m.status === 'live'
+          ? `<button class="btn btn-accent btn-lg" data-action="finish-match">🏁 Finish — declare winner</button>` : ''}
+        ${m.status === 'done'
+          ? `<a class="btn btn-ghost" href="#/t/${t.id}">Back to bracket</a>` : ''}
+      </div>
+    </section>`;
+  }
+
+  return { overview, players, newTournament, tournamentPage, scorePage,
+           getDraft, resetDraft, shuffleDraftTeams, draftTeamCount };
+})();
