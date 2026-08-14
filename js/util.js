@@ -35,7 +35,8 @@ const GAME_PRESETS = [
   { name: 'Cornhole',    icon: '🌽', target: 21,  winBy: 0, notes: 'Cancellation scoring. Bag in the hole = 3, on the board = 1.' },
   { name: 'Horseshoes',  icon: '🐴', target: 21,  winBy: 0, notes: 'Ringer = 3, leaner = 2, closest within a shoe = 1.' },
   { name: 'Ladder Golf', icon: '🪜', target: 21,  winBy: 0, notes: 'Top rung = 3, middle = 2, bottom = 1. Exact 21 to win.' },
-  { name: 'Darts',       icon: '🎯', target: 301, winBy: 0, notes: 'Count down from 301. First to exactly zero wins.' },
+  { name: 'Lawn Darts',  icon: '🎯', target: 21,  winBy: 0, notes: 'In the ring = 3, closest to the ring = 1. Cancellation scoring.' },
+  { name: 'Washers',     icon: '🪙', target: 21,  winBy: 0, notes: 'In the cup = 3, in the box = 1. Cancellation scoring.' },
   { name: 'Junkyard Cannon', icon: '💥', target: 21, winBy: 0, notes: 'Direct hit = 3, scrap zone = 1. Adjust to whatever the cannon crew agrees on before launch.' },
   { name: 'Custom',      icon: '🏅', target: 11,  winBy: 0, notes: '' },
 ];
