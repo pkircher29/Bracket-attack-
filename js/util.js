@@ -38,6 +38,7 @@ const GAME_PRESETS = [
   { name: 'Lawn Darts',  icon: '🎯', target: 21,  winBy: 0, notes: 'In the ring = 3, closest to the ring = 1. Cancellation scoring.' },
   { name: 'Washers',     icon: '🪙', target: 21,  winBy: 0, notes: 'In the cup = 3, in the box = 1. Cancellation scoring.' },
   { name: 'Junkyard Cannon', icon: '💥', target: 21, winBy: 0, notes: 'Direct hit = 3, scrap zone = 1. Adjust to whatever the cannon crew agrees on before launch.' },
+  { name: 'Giant Beer Pong', icon: '🍺', target: 6, winBy: 0, notes: 'Sunk bucket = 1 point. First team to sink all 6 wins. Rebuttal shot optional.' },
   { name: 'Custom',      icon: '🏅', target: 11,  winBy: 0, notes: '' },
 ];
 
