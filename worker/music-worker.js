@@ -29,6 +29,7 @@ const CORS = {
 const RATE_WINDOW_MS = 2 * 60 * 1000;   // two minutes
 const RATE_MAX = 10;                    // more than ten requests -> ban
 const BAN_MS = 20 * 60 * 1000;          // twenty-minute rejection
+const REPEAT_WINDOW_MS = 2 * 60 * 60 * 1000;  // same song max once per 2 hours
 
 let schemaReady = false;
 
@@ -394,6 +395,20 @@ async function api(req, env, url, p) {
     }
     const b = await req.json().catch(() => ({}));
     if (!b.track || !b.track.id) return json({ error: 'missing track' }, 400);
+
+    // one spin per song per 2 hours: block if this track is already queued or
+    // was played (by request OR autoplay) inside the window
+    const repeatStart = iso(now - REPEAT_WINDOW_MS);
+    const dup = await env.DB.prepare(
+      "SELECT status FROM music_requests WHERE track_id = ? AND (status = 'queued' OR (status = 'played' AND played_at > ?)) LIMIT 1")
+      .bind(b.track.id, repeatStart).first();
+    if (dup) {
+      return json({
+        error: dup.status === 'queued'
+          ? 'that song is already in the queue 🔁'
+          : 'that song already played recently — one spin per 2 hours, pick something fresh 🔁',
+      }, 409);
+    }
 
     const windowStart = iso(now - RATE_WINDOW_MS);
     const cnt = await env.DB.prepare(

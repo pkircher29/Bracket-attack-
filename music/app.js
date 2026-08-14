@@ -336,6 +336,7 @@ async function doSearch() {
 
 const Player = (() => {
   let player = null, deviceId = null, current = null, advancing = false, kicked = false;
+  let watchTimer = null, lastPos = 0;
 
   function box() { return $('#playerbox'); }
 
@@ -345,6 +346,8 @@ const Player = (() => {
       if (!st.spotify) { box().innerHTML = `<div>Spotify app not configured. <a class="btn btn-accent btn-sm" href="#/setup">Go to setup</a></div>`; return; }
       if (!st.linked) { box().innerHTML = `<div><a class="btn btn-accent" href="${API}/spotify/login">🔗 Connect host Spotify (Premium)</a></div>`; return; }
       await api('/api/spotify/token'); // verifies the link works
+      // re-entering the page must NOT spawn a second player/device — reuse
+      if (player) { ui(deviceId ? (current ? 'Playing.' : 'Ready — hit Start to fire it up.') : 'Connecting to Spotify…'); return; }
       loadSdk();
     } catch (e) {
       box().innerHTML = `<div class="muted">Player error: ${esc(e.message)}</div>`;
@@ -379,7 +382,42 @@ const Player = (() => {
       }
     });
     player.connect();
+    startWatch();
     ui('Connecting to Spotify…');
+  }
+
+  // Watchdog poll — the player_state_changed heuristic misses track end when
+  // playing single URIs (previous_tracks stays empty), which strands the
+  // console in silence. Poll the SDK state instead:
+  //  - track was progressing, now paused at 0:00 -> it ended, advance
+  //  - an autoplay track is on and a real request arrives -> fade into it
+  function startWatch() {
+    clearInterval(watchTimer);
+    watchTimer = setInterval(async () => {
+      if (advancing || !deviceId || !player) return;
+      try {
+        const st = await player.getCurrentState();
+        if (current && st) {
+          if (st.paused && st.position === 0 && lastPos > 1000) {
+            lastPos = 0; current = null;
+            return playNext();
+          }
+          if (!st.paused) lastPos = st.position;
+        }
+        if (current && current.source === 'auto') {
+          const n = await api('/api/next');
+          if (n.source === 'request' && !advancing) return fadeInto();
+        }
+      } catch {}
+    }, 3000);
+  }
+
+  // requests beat the robot: ramp the volume down, advance, ramp back up
+  async function fadeInto() {
+    try { for (let v = 9; v >= 0; v--) { await player.setVolume(v / 10); await new Promise(r => setTimeout(r, 110)); } } catch {}
+    lastPos = 0; current = null;
+    await playNext();
+    try { for (let v = 2; v <= 10; v++) { await player.setVolume(v / 10); await new Promise(r => setTimeout(r, 70)); } } catch {}
   }
 
   function ui(status) {
@@ -409,7 +447,7 @@ const Player = (() => {
     advancing = true;
     try {
       const n = await api('/api/next');
-      if (n.source === 'none') { ui('Queue empty and nothing played yet — get a request in to start the party.'); advancing = false; return; }
+      if (n.source === 'none') { ui('Queue empty and nothing played yet — get a request in to start the party.'); return; }
       const track = n.track;
       const tok = (await api('/api/spotify/token')).access_token;
       const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
@@ -418,6 +456,7 @@ const Player = (() => {
         body: JSON.stringify({ uris: [track.uri] }),
       });
       if (!res.ok && res.status !== 204) throw new Error('Spotify play failed (' + res.status + ')');
+      lastPos = 0;
       current = { track, trackId: track.id, source: n.source, userName: n.user_name };
       await api('/api/played', { method: 'POST', body: JSON.stringify(n.source === 'request' ? { request_id: n.request_id } : { track }) });
       if (!kicked) {
@@ -426,7 +465,7 @@ const Player = (() => {
         // unsticks it. Only needed once per page load.
         kicked = true;
         await new Promise(r => setTimeout(r, 800));
-        const st = player && await player.getCurrentState();
+        const st = await Promise.race([player.getCurrentState(), new Promise(r => setTimeout(() => r(null), 1500))]);
         if (!st || st.position === 0) {
           const H = { Authorization: 'Bearer ' + tok };
           await fetch('https://api.spotify.com/v1/me/player/pause', { method: 'PUT', headers: H });
@@ -437,12 +476,15 @@ const Player = (() => {
       ui('Playing.');
     } catch (e) {
       ui('Play error: ' + e.message);
+    } finally {
+      // never leave the advancing latch stuck — a jammed latch bricked Skip
+      advancing = false;
     }
-    advancing = false;
   }
 
   function trackEnded() {
     current = null;
+    lastPos = 0;
     playNext();
   }
 
