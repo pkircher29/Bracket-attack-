@@ -218,7 +218,7 @@ function vQueue(d) {
     ${d.users.length ? d.users.map(u =>
       `<span class="pchip">${esc(u.name)} <b>${u.played}</b>${u.banned ? ' ⛔' : ''}${u.role === 'host' ? ' 🎛' : ''}
        ${u.banned && isHost() ? `<button class="btn btn-ghost btn-sm" data-action="unban" data-name="${esc(u.name)}">unban</button>` : ''}
-       ${u.role !== 'host' && isHost() ? `<button class="btn btn-ghost btn-sm" title="set completed-song count back to zero" data-action="reset-plays" data-name="${esc(u.name)}">reset plays</button>` : ''}
+       ${isHost() ? `<button class="btn btn-ghost btn-sm" title="set completed-song count back to zero" data-action="reset-plays" data-name="${esc(u.name)}">reset plays</button>` : ''}
        ${!u.banned && u.role !== 'host' && isHost() ? `<button class="btn btn-ghost btn-sm" title="permanently ban" data-action="ban" data-name="${esc(u.name)}">ban</button>` : ''}</span>`).join('')
       : '<span class="muted small">No plays yet.</span>'}
   </div>`;

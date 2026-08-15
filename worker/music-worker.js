@@ -486,8 +486,7 @@ async function api(req, env, url, p) {
     const name = String(b.name || '').trim();
     if (!name) return json({ error: 'missing name' }, 400);
     const target = await env.DB.prepare('SELECT id, name, role FROM music_users WHERE name = ?').bind(name).first();
-    if (!target) return json({ error: 'no such guest' }, 404);
-    if ((target.role || 'guest') === 'host') return json({ error: 'cannot reset a host counter' }, 400);
+    if (!target) return json({ error: 'no such user' }, 404);
     await env.DB.prepare('UPDATE music_users SET played = 0 WHERE id = ?').bind(target.id).run();
     return json({ ok: true, name: target.name, played: 0 });
   }
