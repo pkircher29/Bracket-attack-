@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0f0d0a">
+<title>Junkyard Olympics · Yard TV</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚙️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Saira+Stencil+One&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/tv.css">
+</head>
+<body class="yard-tv">
+<header class="tv-topbar">
+  <a class="brand" href="/">⚙️ <span>Junkyard<em>Olympics</em></span></a>
+  <div class="tv-title"><span class="live-dot"></span>YARD TV <small>LIVE EVENT FEED</small></div>
+  <div class="tv-clock" id="tv-clock"></div>
+</header>
+
+<main class="tv-shell" id="tv-main" aria-live="polite">
+  <section class="tv-panel active" data-panel="welcome">
+    <div class="tv-welcome">
+      <img class="tv-hero" src="assets/junkyard-hero.jpg" alt="Junkyard Olympics">
+      <div class="tv-welcome-copy">
+        <span class="tv-kicker">Questionable engineering · official sport</span>
+        <h1>Junkyard <em>Olympics</em></h1>
+        <p>Live scores. Live brackets. Maximum backyard glory.</p>
+        <div class="tv-room">LIVE ROOM <b id="room-name">JUNKYARD</b></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tv-panel" data-panel="now">
+    <span class="tv-kicker">Live event status</span>
+    <h1 id="now-heading">No match is on the clock</h1>
+    <div class="match-card tv-now-card" id="now-card"></div>
+  </section>
+
+  <section class="tv-panel" data-panel="deck">
+    <span class="tv-kicker">Upcoming action</span><h1>On deck</h1>
+    <div class="tv-list" id="deck-list"></div>
+  </section>
+
+  <section class="tv-panel" data-panel="events">
+    <span class="tv-kicker">All official events</span><h1>Event board</h1>
+    <div class="event-grid" id="event-grid"></div>
+  </section>
+
+  <section class="tv-panel" data-panel="standings">
+    <span class="tv-kicker">Tournament of tournaments</span><h1>Top of the heap</h1>
+    <div class="tv-list standings-list" id="standings-list"></div>
+  </section>
+
+  <section class="tv-panel" data-panel="teams">
+    <span class="tv-kicker">Everybody competing</span><h1>Teams & competitors</h1>
+    <div class="tv-list roster-list" id="roster-list"></div>
+  </section>
+
+  <section class="tv-panel" data-panel="rules">
+    <span class="tv-kicker">How glory gets counted</span><h1>Official scoring</h1>
+    <div class="rules-board">
+      <article><strong>🥇 4</strong><span>points for a tournament win</span></article>
+      <article><strong>🥈 3</strong><span>points for second place</span></article>
+      <article><strong>🥉 2</strong><span>points for third place</span></article>
+      <article><strong>🎮 1</strong><span>point for every competitor</span></article>
+    </div>
+    <p class="tv-note">Every event has its own rules. Check the board, play hard, and avoid anything that needs a tetanus shot.</p>
+  </section>
+
+  <section class="tv-panel" data-panel="join">
+    <div class="join-screen">
+      <img src="assets/junkyard-hero.jpg" alt="Junkyard Olympics">
+      <div><span class="tv-kicker">Want in?</span><h1>Join the games.</h1><p>Open <b>JunkyardOlympics.com</b> on your phone, pick your events, and get in the yard.</p><b class="join-url">JUNKYARDOLYMPICS.COM</b></div>
+    </div>
+  </section>
+</main>
+
+<footer class="tv-footer">
+  <div class="panel-dots" id="panel-dots"></div>
+  <div><span id="connection-status">CONNECTING</span> · NEXT FEED IN <b id="next-in">14</b>S</div>
+  <div class="tv-help">← → change feed · SPACE pause · F full screen</div>
+</footer>
+<script src="js/qrcode.js"></script>
+<script src="js/util.js"></script>
+<script src="js/store.js"></script>
+<script src="js/bracket.js"></script>
+<script src="js/sync.js"></script>
+<script src="js/tv.js"></script>
+</body>
+</html>
