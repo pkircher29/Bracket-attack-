@@ -1,26 +1,5 @@
-# OS
-.DS_Store
-Thumbs.db
-
-# Editors
-.vscode/
-.idea/
-*.swp
-
-# Logs
-*.log
-
-# Dependencies / build output
 node_modules/
 dist/
-build/
-out/
-target/
-__pycache__/
-*.pyc
-.venv/
-venv/
-
-# Environment
+*.db
+*.sqlite
 .env
-.env.local

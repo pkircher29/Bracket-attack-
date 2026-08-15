@@ -1,110 +1,107 @@
-# ⚙️ Bracket Attack — Junkyard Olympics Edition
+# Junkyard Olympics — Website
 
-**Version 1.0.0**
+The merged home of the Junkyard Olympics software, combining two independent
+builds by **Paul** (pkircher29) and **Chris** (crose0122).
 
-**A tournament-of-tournaments tracker for backyard game days**, themed for the
-**Junkyard Olympics**: rust, scrap steel and caution tape. Run multiple
-tournaments — cornhole, horseshoes, ladder golf, whatever — all at the same
-time, each with its own bracket page and scorekeeping, feeding one overall
-medal table. Random teams get junkyard-grade names like *Rusty Hubcaps* and
-*Greasy Sprockets*.
+> Rust, scrap steel, caution tape, and gloriously overproduced backyard sports.
 
-## Features
+## What lives where
 
-- **Overview dashboard** — every tournament at a glance (live/active/complete,
-  progress bars) plus the overall standings.
-- **Tournament of tournaments scoring** — when a tournament finishes, every
-  player on the 1st place team earns **4 points**, 2nd place **3**, 3rd place
-  **2**, and everyone who played gets **1** — so it always pays to play.
-- **Player pool & teams** — bulk-add your whole crew. Build **static teams**
-  that stay together in every tournament, and draw **random teams** from the
-  remaining pool on a tournament-by-tournament basis (with auto-generated team
-  names like *Blazing Baggers*).
-- **Per-tournament rules** — when a tournament begins you lock in its scoring
-  rules: target score, win-by margin, and house-rule notes. Presets for
-  cornhole, horseshoes, ladder golf and darts.
-- **Single-elimination brackets** with byes handled automatically and a
-  3rd-place match so bronze points are earned on the court, not on paper.
-- **Big scorekeeping page per match** — huge scores, +1/+2/+3 buttons,
-  target-score highlighting, winner declaration.
-- **Knows who's playing right now** — players in a live match anywhere get a
-  🎮 badge, and when you start a match whose players are busy in another
-  tournament, the app **automatically substitutes a free team from the same
-  leg of the bracket** and tells you what it did.
-- **Multi-device live sync** — every phone or tablet that opens the site and
-  joins the same **room code** shares one live scoreboard. Different devices
-  can score different matches at the same time (even in the same tournament);
-  changes merge automatically and show up everywhere within a few seconds.
-- **Confetti.** Obviously.
-- Export/import your data as a JSON backup.
+```
+junkyardolympics.com            CHRIS'S APP — the main site. A Cloudflare
+                                Worker proxies every request over a Tailscale
+                                bridge (AutoKJ VPS -> RecRoomRig:8790) to the
+                                lan-server below. Styled fallback page when
+                                the control tower is unreachable.
 
-## Running it
+bracket.junkyardolympics.com    Paul's bracket scoreboard + medal table
+                                (static from site/, sync API on D1)
 
-**The live site is [junkyardolympics.com](https://junkyardolympics.com).**
+music.junkyardolympics.com      Junkyard Jukebox (Spotify party queue)
 
-The Cloudflare Worker in [`worker/worker.js`](worker/worker.js) serves the
-site (routed on `junkyardolympics.com/*` and `www.junkyardolympics.com/*`) by
-proxying this repo's `main` branch with edge caching — **merge to `main` and
-the live site updates within ~2 minutes**, no deploy step.
+site/         Paul's cloud apps (scoreboard + jukebox + workers)
+lan-server/   Chris's control tower — Node 22 + Express + SQLite: signup,
+              competitor pass, cannon engine, TV broadcast, Flair, stations,
+              print packet, organizer consoles (176/181 tests passing).
+              RUN WITH HOST=0.0.0.0 so the public relay can reach it.
+docs/         COMPARISON.md — head-to-head analysis and merge decision record
+```
 
-It's still a zero-build static app, so it also runs anywhere else:
+## Running each part
 
-- **Locally:** open `index.html` in a browser (or `python3 -m http.server`
-  in the repo folder and visit `http://localhost:8000`).
-- Any static host (GitHub Pages etc.) works too — sync automatically talks
-  to the worker cross-origin.
+**site/** deploys serverlessly — the static frontend is proxied from a GitHub
+`main` branch by two Cloudflare Workers (`bracket-attack-sync`, `junkyard-music`);
+worker source is in `site/worker/`. During the transition the *live* site still
+deploys from the `pkircher29/Bracket-attack-` repo; this copy is the merge
+working tree.
 
-## Multi-device sync
+**lan-server/** (Node 22+):
 
-Sync is on by default, in room **`junkyard`**. Every device that opens the
-site and joins the same room (Live Sync card on the overview page) shares one
-scoreboard. The green dot in the top bar means you're live.
+```bash
+cd lan-server
+npm install
+HOST=0.0.0.0 ORGANIZER_TOKENS=<chris-secret>,<paul-secret> npm run build && npm start
+# HOST=0.0.0.0 matters: the default binds loopback only, and the public
+# junkyardolympics.com relay arrives on the Tailscale interface
+# serves on port 8790 — participant/organizer/station/TV/print views in public/
+npm test   # vitest suite
+```
 
-- Keep **one scorekeeper per match** — everything else (different matches,
-  different tournaments, players, teams) merges automatically.
-- Data also stays in each device's local storage, so a device that drops off
-  WiFi keeps working and re-merges when it reconnects.
+## Merge status
 
-The backend is a ~60-line Cloudflare Worker + D1 database (free tier), source
-in [`worker/worker.js`](worker/worker.js), deployed at
-`bracket-attack-sync.pkircher.workers.dev`.
+See [`docs/COMPARISON.md`](docs/COMPARISON.md) for the full head-to-head.
+**Paul's deployed cloud stack is the backbone**; Chris's work is merging in:
 
-## How a game day works
+Done:
+- Chris's brand art + surface system (masthead/taglines, ticket-tab courier
+  nav, comic outlines, halftone grit) applied across both cloud sites
+- His QR signup flow (scan -> name only -> in) live on both sites
+- His event catalog merged (Field Pong, Bocce Ball, Volley Strike, Badminton)
+- Guests form their own 2-person teams; team/player names pass an obvious
+  profanity censor; tournament creation is hosts-only
+- **Event HQ bridge**: the cloud site links to this repo's `lan-server`
+  (TV broadcast, cannon console, organizer) and pulls its championship +
+  Flair standings live. The HQ URL is host-configured at `#/hq` and syncs to
+  every device - use the LAN IP, a Tailscale hostname, or a **Tailscale
+  Funnel** URL (`tailscale funnel 8790` on the host) so phones reach it from
+  anywhere. `lan-server` now sends read-only CORS headers for exactly this.
 
-1. **Players & Teams** page — paste in everyone's names. Optionally create
-   static teams (the duos who always play together).
-2. **New Tournament** — pick the game, set the rules, check the static teams
-   you want in, and hit 🎲 to draw random teams from everyone else.
-3. Run matches from the tournament page — **Start** a match, score it on the
-   big scoreboard, **Finish** to advance the bracket.
-4. Repeat with as many simultaneous tournaments as you like. The overview
-   page keeps the master leaderboard.
+Next up (in value order): port TV broadcast natively, Flair, confirm/dispute
+results, consolation bracket path, cannon engine. `lan-server/` stays intact
+as the reference implementation and the internet-outage fallback.
 
-## 📻 Junkyard Jukebox (music.junkyardolympics.com)
+## Junkyard Constellation integration
 
-The party's music platform lives in [`music/`](music/) with its own worker
-([`worker/music-worker.js`](worker/music-worker.js), deployed as
-`junkyard-music`, routed to `music.junkyardolympics.com/*`, same D1 database):
+The founder-approved local photo vault is being integrated on `feat/photo-vault-merge`
+from this exact canonical tree. Signed-in guests will get a native **Junkyard
+Constellation** route in Paul's hosted app. Their existing Paul session is validated
+server-to-server and mapped by immutable external subject id into the local
+vault; guests do not create a second display-name identity.
 
-- Guests log in with a **username + shared party password**.
-- **Spotify search** (track, artist, album, release year, popularity, album
-  art) via the client-credentials flow.
-- Requests enter a **weighted round-robin queue**: guests with fewer songs
-  played go first. More than **10 requests in 2 minutes** = automatic
-  **20-minute rejection** and the offender's rotation slot moves to the end
-  of the line.
-- When the queue is empty, **autoplay** picks from the host's Spotify
-  **Liked Songs** (falling back to the last played track's artist
-  top-tracks — Spotify retired its recommendations endpoint for new apps).
-- The **host player console** (`/#/player`) links a Spotify **Premium**
-  account and plays through the browser via the Web Playback SDK, advancing
-  the queue automatically.
+All image bytes, consent, moderation, plaques, removal state, backups, and
+exports remain in `lan-server/` under its configured `DATA_DIR`. No photo is
+stored in D1, room sync, localStorage, GitHub, Spotify, or a public static
+directory. Cloud/model uncertainty stays private for organizer review. The TV
+reel is ambient only: official calls, results, recovery, and audio always win.
 
-One-time host setup at `music.junkyardolympics.com/#/setup`: set the party
-password, then create a free app at developer.spotify.com/dashboard, add the
-shown redirect URI, paste the client ID/secret, and click *connect Spotify*
-on the host device.
+Frozen requirements and execution gates:
 
-## Tech
+- [`docs/PHOTO-VAULT-SPEC.md`](docs/PHOTO-VAULT-SPEC.md)
+- [`docs/PHOTO-VAULT-PLAN.md`](docs/PHOTO-VAULT-PLAN.md)
 
-Vanilla HTML/CSS/JS. No frameworks, no build step, works offline once loaded.
+Git merge, Cloudflare worker deployment, and live LAN deployment are three
+separate approval boundaries. Until exact-snapshot review and real-device
+rehearsal pass, the current party runtimes stay unchanged.
+
+The website is the only family/participant/operator UI. Event HQ provides the
+secured API, SQLite state, photo processing, and recovery services behind it.
+Rehearsal, Cannon setup/scoring/alerts, and moderation are organizer-only
+sections of the website admin dashboard; they never appear in participant
+navigation. Rehearsal uses a visibly synthetic disposable event state.
+
+## Credits
+
+- **Paul Kircher** — bracket engine (single/double elim, seeded draws), medal
+  table, live multi-device sync, Junkyard Jukebox, QR join flow
+- **Chris** — brand system + t-shirt art, TV broadcast experience, cannon
+  scoring engine, Flair, stations/check-in scheduling, ops & recovery design
