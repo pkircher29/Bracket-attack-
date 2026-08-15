@@ -218,6 +218,7 @@ function vQueue(d) {
     ${d.users.length ? d.users.map(u =>
       `<span class="pchip">${esc(u.name)} <b>${u.played}</b>${u.banned ? ' ⛔' : ''}${u.role === 'host' ? ' 🎛' : ''}
        ${u.banned && isHost() ? `<button class="btn btn-ghost btn-sm" data-action="unban" data-name="${esc(u.name)}">unban</button>` : ''}
+       ${u.role !== 'host' && isHost() ? `<button class="btn btn-ghost btn-sm" title="set completed-song count back to zero" data-action="reset-plays" data-name="${esc(u.name)}">reset plays</button>` : ''}
        ${!u.banned && u.role !== 'host' && isHost() ? `<button class="btn btn-ghost btn-sm" title="permanently ban" data-action="ban" data-name="${esc(u.name)}">ban</button>` : ''}</span>`).join('')
       : '<span class="muted small">No plays yet.</span>'}
   </div>`;
@@ -572,6 +573,12 @@ document.addEventListener('click', async (e) => {
     if (act === 'unban') {
       await api('/api/admin/unban', { method: 'POST', body: JSON.stringify({ name: el.dataset.name }) });
       toast(`${esc(el.dataset.name)} unbanned and restored in the rotation. 🎛`);
+      render();
+    }
+    if (act === 'reset-plays') {
+      if (!confirm(`Reset ${el.dataset.name}'s completed-song counter to 0? Their queued requests, penalty, and ban status are unchanged.`)) return;
+      await api('/api/admin/reset-plays', { method: 'POST', body: JSON.stringify({ name: el.dataset.name }) });
+      toast(`${esc(el.dataset.name)}'s play counter is now 0. 🎛`);
       render();
     }
     if (act === 'ban') {

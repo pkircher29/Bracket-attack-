@@ -479,6 +479,19 @@ async function api(req, env, url, p) {
     return json({ ok: true });
   }
 
+  // Host-only fairness adjustment. This deliberately resets only the completed-song
+  // counter; it does not alter queued requests, penalty, or ban status.
+  if (p === '/api/admin/reset-plays' && req.method === 'POST') {
+    const b = await req.json().catch(() => ({}));
+    const name = String(b.name || '').trim();
+    if (!name) return json({ error: 'missing name' }, 400);
+    const target = await env.DB.prepare('SELECT id, name, role FROM music_users WHERE name = ?').bind(name).first();
+    if (!target) return json({ error: 'no such guest' }, 404);
+    if ((target.role || 'guest') === 'host') return json({ error: 'cannot reset a host counter' }, 400);
+    await env.DB.prepare('UPDATE music_users SET played = 0 WHERE id = ?').bind(target.id).run();
+    return json({ ok: true, name: target.name, played: 0 });
+  }
+
   // permanent ban: locks the guest out of requesting and clears their queue
   if (p === '/api/admin/ban' && req.method === 'POST') {
     const b = await req.json().catch(() => ({}));
